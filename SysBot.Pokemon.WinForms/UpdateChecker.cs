@@ -10,7 +10,7 @@ namespace SysBot.Pokemon.WinForms
 {
     public class UpdateChecker
     {
-        private const string RepositoryOwner = "bdawg1989";
+        private const string RepositoryOwner = "Cyb3r8";
         private const string RepositoryName = "PokeBot";
 
         public static async Task<(bool UpdateAvailable, bool UpdateRequired, string NewVersion)> CheckForUpdatesAsync(bool forceShow = false)

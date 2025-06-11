@@ -78,7 +78,7 @@ namespace SysBot.Pokemon.WinForms
         {
             return !string.IsNullOrWhiteSpace(changelogBody) &&
                    changelogBody.Contains("Required = Yes", StringComparison.OrdinalIgnoreCase);
-        }
+        }//Test
 
         private class ReleaseInfo
         {

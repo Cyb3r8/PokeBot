@@ -135,7 +135,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
 
     [Command("addChannel")]
     [Summary("Adds a channel to the list of channels that are accepting commands.")]
-    [RequireOwner]
+    [RequireSudo]
     public async Task AddChannel()
     {
         var obj = GetReference(Context.Message.Channel);
@@ -175,7 +175,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
 
     [Command("removeChannel")]
     [Summary("Removes a channel from the list of channels that are accepting commands.")]
-    [RequireOwner]
+    [RequireSudo]
     public async Task RemoveChannel()
     {
         var obj = GetReference(Context.Message.Channel);
@@ -413,7 +413,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
 
         var embed = new EmbedBuilder
         {
-            Title = "Private Message from the Bot Owner",
+            Title = "Private Message from Ninetales' Paradise",
             Description = message,
             Color = (DiscordColor?)Color.Gold,
             Timestamp = DateTimeOffset.Now,

@@ -27,4 +27,3 @@ public class ChannelLogger(ulong ChannelID, ISocketMessageChannel Channel) : ILo
     private static string GetMessage(ReadOnlySpan<char> msg, string identity)
         => $"> [{DateTime.Now:hh:mm:ss}] - {identity}: {msg}";
 }
-//Test

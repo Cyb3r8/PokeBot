@@ -365,7 +365,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         var ignoreAutoOT = content.Contains("OT:") || content.Contains("TID:") || content.Contains("SID:");
         content = ReusableActions.StripCodeBlock(content);
         bool isEgg = TradeExtensions<T>.IsEggCheck(content);
-        byte detectedLanguage = TradeExtensions<T>.DetectShowdownLanguage(content);
 
         string finalContent = content;
         List<string> initialCorrectionMessages = [];
@@ -396,12 +395,13 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
             }
         }
 
-        // Final validation
         if (set == null || set.Species == 0)
         {
             await ReplyAsync("Unable to parse Showdown set. Could not identify the Pokémon species.");
             return;
         }
+
+        byte finalLanguage = LanguageHelper.GetFinalLanguage(content, set, (byte)Info.Hub.Config.Legality.GenerateLanguage, TradeExtensions<T>.DetectShowdownLanguage);
 
         var template = AutoLegalityWrapper.GetTemplate(set);
 
@@ -416,7 +416,7 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         {
             try
             {
-                var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
+                var sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
                 var pkm = sav.GetLegal(template, out var result);
 
                 if (pkm == null)
@@ -471,6 +471,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                         {
                             set = new ShowdownSet(secondaryCorrection);
                             template = AutoLegalityWrapper.GetTemplate(set);
+                            finalLanguage = LanguageHelper.GetFinalLanguage(secondaryCorrection, set, (byte)Info.Hub.Config.Legality.GenerateLanguage, TradeExtensions<T>.DetectShowdownLanguage);
+                            sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
                             pkm = sav.GetLegal(template, out result);
                             la = new LegalityAnalysis(pkm);
                             setEdited = true;
@@ -518,7 +520,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                     pk = (T)pkm;
                 }
 
-                // Show corrections if any were made
                 if (allCorrectionMessages.Count > 0 && la.Valid)
                 {
                     var userName = Context.User.Mention;
@@ -538,7 +539,7 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 if (pk.WasEgg)
                     pk.EggMetDate = pk.MetDate;
 
-                pk.Language = detectedLanguage;
+                pk.Language = finalLanguage;
 
                 if (!set.Nickname.Equals(pk.Nickname) && string.IsNullOrEmpty(set.Nickname))
                 {
@@ -641,7 +642,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         var ignoreAutoOT = content.Contains("OT:") || content.Contains("TID:") || content.Contains("SID:");
         content = ReusableActions.StripCodeBlock(content);
         bool isEgg = TradeExtensions<T>.IsEggCheck(content);
-        byte detectedLanguage = TradeExtensions<T>.DetectShowdownLanguage(content);
 
         string finalContent = content;
         List<string> initialCorrectionMessages = [];
@@ -679,6 +679,9 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
             return;
         }
 
+        // Determine the final language to use
+        byte finalLanguage = LanguageHelper.GetFinalLanguage(content, set, (byte)Info.Hub.Config.Legality.GenerateLanguage, TradeExtensions<T>.DetectShowdownLanguage);
+
         var template = AutoLegalityWrapper.GetTemplate(set);
 
         if (set.InvalidLines.Count != 0)
@@ -692,7 +695,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         {
             try
             {
-                var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
+                // Get trainer info with the correct language
+                var sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
                 var pkm = sav.GetLegal(template, out var result);
                 if (pkm == null)
                 {
@@ -746,6 +750,9 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                         {
                             set = new ShowdownSet(secondaryCorrection);
                             template = AutoLegalityWrapper.GetTemplate(set);
+                            // Recalculate language in case it changed
+                            finalLanguage = LanguageHelper.GetFinalLanguage(secondaryCorrection, set, (byte)Info.Hub.Config.Legality.GenerateLanguage, TradeExtensions<T>.DetectShowdownLanguage);
+                            sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
                             pkm = sav.GetLegal(template, out result);
                             la = new LegalityAnalysis(pkm);
                             setEdited = true;
@@ -813,7 +820,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 if (pk.WasEgg)
                     pk.EggMetDate = pk.MetDate;
 
-                pk.Language = detectedLanguage;
+                // Set the final language on the Pokemon
+                pk.Language = finalLanguage;
 
                 if (!set.Nickname.Equals(pk.Nickname) && string.IsNullOrEmpty(set.Nickname))
                 {
@@ -1075,7 +1083,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
     {
         tradeContent = ReusableActions.StripCodeBlock(tradeContent);
         var ignoreAutoOT = tradeContent.Contains("OT:") || tradeContent.Contains("TID:") || tradeContent.Contains("SID:");
-        byte detectedLanguage = TradeExtensions<T>.DetectShowdownLanguage(tradeContent);
 
         string finalContent = tradeContent;
         List<string> initialCorrectionMessages = [];
@@ -1113,6 +1120,9 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
             return;
         }
 
+        // Determine the final language to use
+        byte finalLanguage = LanguageHelper.GetFinalLanguage(tradeContent, set, (byte)Info.Hub.Config.Legality.GenerateLanguage, TradeExtensions<T>.DetectShowdownLanguage);
+
         var template = AutoLegalityWrapper.GetTemplate(set);
 
         if (set.InvalidLines.Count != 0)
@@ -1126,7 +1136,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         {
             try
             {
-                var sav = AutoLegalityWrapper.GetTrainerInfo<T>();
+                // Get trainer info with the correct language
+                var sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
                 var pkm = sav.GetLegal(template, out var result);
                 if (pkm == null)
                 {
@@ -1153,6 +1164,11 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                         {
                             set = new ShowdownSet(secondaryCorrection);
                             template = AutoLegalityWrapper.GetTemplate(set);
+
+                            // Recalculate language in case it changed
+                            finalLanguage = LanguageHelper.GetFinalLanguage(secondaryCorrection, set, (byte)Info.Hub.Config.Legality.GenerateLanguage, TradeExtensions<T>.DetectShowdownLanguage);
+                            sav = LanguageHelper.GetTrainerInfoWithLanguage<T>((LanguageID)finalLanguage);
+
                             pkm = sav.GetLegal(template, out result);
                             la = new LegalityAnalysis(pkm);
                             setEdited = true;
@@ -1242,7 +1258,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 if (pkm.WasEgg)
                     pkm.EggMetDate = pkm.MetDate;
 
-                pk.Language = detectedLanguage;
+                // Set the final language on the Pokemon
+                pk.Language = finalLanguage;
 
                 if (!set.Nickname.Equals(pk.Nickname) && string.IsNullOrEmpty(set.Nickname))
                 {

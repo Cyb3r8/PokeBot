@@ -22,7 +22,7 @@ public static class WebApiExtensions
     private static CancellationTokenSource? _monitorCts;
     private static Main? _main;
 
-    private const int WebPort = 8080;
+    private const int WebPort = 2305;
     private static int _tcpPort = 0;
 
     public static void InitWebServer(this Main mainForm)

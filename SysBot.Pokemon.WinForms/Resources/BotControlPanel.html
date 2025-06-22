@@ -1627,7 +1627,7 @@
                     }
 
                     // Check for master update
-                    const masterPort = parseInt(window.location.port || '8080');
+                    const masterPort = parseInt(window.location.port || '2305');
                     const masterUpdating = result.Results?.some(r =>
                         r.UpdateStarted && r.Port === masterPort
                     );

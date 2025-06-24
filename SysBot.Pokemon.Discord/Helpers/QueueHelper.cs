@@ -223,12 +223,6 @@ public static class QueueHelper<T> where T : PKM, new()
             {
                 DetailsExtractor<T>.AddSpecialTradeFields(embedBuilder, isMysteryEgg, type == PokeRoutineType.SeedCheck, type == PokeRoutineType.Clone, type == PokeRoutineType.FixOT, trader.Mention);
             }
-
-            if (setEdited && Info.Hub.Config.Trade.AutoCorrectConfig.AutoCorrectEmbedIndicator)
-            {
-                embedBuilder.Footer.IconUrl = "https://raw.githubusercontent.com/bdawg1989/sprites/main/setedited.png";
-                embedBuilder.AddField("**__Notice__**: **Your Showdown Set was Invalid.**", "*Auto Corrected to make legal.*");
-            }
             // Check if the Pokemon is Non-Native and/or has a Home Tracker
             if (pk is IHomeTrack homeTrack)
             {

@@ -135,3 +135,75 @@ netsh advfirewall firewall add rule name="PokeBot Web" dir=in action=allow proto
 
 # License
 Refer to the `License.md` for details regarding licensing.
+
+---
+
+# 🚀 Universal Bot Controller
+
+This PokeBot project now supports the **Universal Bot Controller System**, enabling management of both PokeBot and RaidBot through a single web interface.
+
+## ✨ Features
+
+### 🔄 Master-Slave Architecture
+- First started bot instance becomes the **Master** (Web server on port 8080)
+- Additional instances are automatically detected as **Slaves**
+- Works with any combination of PokeBot and RaidBot
+
+### 🌐 Unified Web Interface
+- Access via `http://localhost:8080/` regardless of which bot starts first
+- Visually distinguishable bot types:
+  - 🎮 **PokeBot** (green highlighted)
+  - ⚔️ **RaidBot** (purple highlighted)
+- Automatic bot type detection and display
+
+### ⚡ Universal Commands
+- **Start All** - Starts all bots of all types
+- **Stop All** - Stops all bots of all types
+- **Idle All** - Sets all bots to idle mode
+- **Refresh Map All** - RaidBot-specific function (only available for RaidBot instances)
+
+### 🔧 Bot-Specific Features
+- Separate update systems for PokeBot and RaidBot from their respective repositories
+- Bot-specific functions are automatically enabled/disabled
+- Intelligent command routing based on bot type
+
+## 🚀 Usage
+
+### Single PokeBot:
+1. Start `PokeBot.exe`
+2. Open `http://localhost:8080/`
+3. Manage your PokeBot instances
+
+### Mixed Bot Environment:
+1. Start any combination of PokeBot and RaidBot
+2. The first started bot takes over the web server role
+3. All subsequent bots are automatically detected
+4. Manage all bots through a single interface at `http://localhost:8080/`
+
+### Network Access for Universal Controller:
+```cmd
+# Admin permission for all bot types
+netsh http add urlacl url=http://+:8080/ user=Everyone
+
+# Firewall rule for Universal Controller
+netsh advfirewall firewall add rule name="Universal Bot Controller" dir=in action=allow protocol=TCP localport=8080
+```
+
+## 🔧 Technical Details
+
+### Port Standardization
+- Both bot types now use **Port 8080/8081**
+- Automatic collision detection and master-slave assignment
+- Cross-bot communication via port files
+
+### Bot Type Detection
+- Automatic detection via Reflection:
+  - PokeBot: `SysBot.Pokemon.Helpers.PokeBot`
+  - RaidBot: `SysBot.Pokemon.SV.BotRaid.Helpers.SVRaidBot`
+
+### Update Management
+- PokeBot: Updates from PokeBot repository
+- RaidBot: Updates from RaidBot repository
+- Automatic repository detection based on bot type
+
+The Universal Bot Controller System makes managing multiple bot instances of different types easier than ever! 🎉

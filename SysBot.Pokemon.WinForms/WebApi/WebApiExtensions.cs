@@ -25,6 +25,14 @@ public static class WebApiExtensions
     private const int WebPort = 8080;
     private static int _tcpPort = 0;
 
+    // Bot type detection
+    public enum BotType
+    {
+        PokeBot,
+        RaidBot,
+        Unknown
+    }
+
     public static void InitWebServer(this Main mainForm)
     {
         _main = mainForm;
@@ -35,8 +43,10 @@ public static class WebApiExtensions
 
             if (IsPortInUse(WebPort))
             {
+                LogUtil.LogInfo($"Web port {WebPort} is in use by another bot instance. Starting as slave...", "WebServer");
                 _tcpPort = FindAvailablePort(8081);
                 StartTcpOnly();
+                LogUtil.LogInfo($"Slave instance started with TCP port {_tcpPort}. Monitoring master...", "WebServer");
 
                 StartMasterMonitor();
                 return;
@@ -45,7 +55,9 @@ public static class WebApiExtensions
             TryAddUrlReservation(WebPort);
 
             _tcpPort = FindAvailablePort(8081);
+            LogUtil.LogInfo($"Starting as master web server on port {WebPort} with TCP port {_tcpPort}", "WebServer");
             StartFullServer();
+            LogUtil.LogInfo($"Web interface is available at http://localhost:{WebPort}", "WebServer");
         }
         catch (Exception ex)
         {
@@ -60,15 +72,20 @@ public static class WebApiExtensions
             var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
             var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
 
-            var portFiles = Directory.GetFiles(exeDir, "PokeBot_*.port");
+            // Clean up both PokeBot and RaidBot port files
+            var pokeBotPortFiles = Directory.GetFiles(exeDir, "PokeBot_*.port");
+            var raidBotPortFiles = Directory.GetFiles(exeDir, "SVRaidBot_*.port");
+            var allPortFiles = pokeBotPortFiles.Concat(raidBotPortFiles);
 
-            foreach (var portFile in portFiles)
+            foreach (var portFile in allPortFiles)
             {
                 try
                 {
                     var fileName = Path.GetFileNameWithoutExtension(portFile);
-                    var pidStr = fileName.Substring("PokeBot_".Length);
+                    var parts = fileName.Split('_');
+                    if (parts.Length < 2) continue;
 
+                    var pidStr = parts[1];
                     if (int.TryParse(pidStr, out int pid))
                     {
                         if (pid == Environment.ProcessId)
@@ -100,6 +117,89 @@ public static class WebApiExtensions
         catch (Exception ex)
         {
             LogUtil.LogError($"Failed to cleanup stale port files: {ex.Message}", "WebServer");
+        }
+    }
+
+    private static BotType DetectBotType()
+    {
+        try
+        {
+            // Try to detect PokeBot first
+            var pokeBotType = Type.GetType("SysBot.Pokemon.Helpers.PokeBot, SysBot.Pokemon");
+            if (pokeBotType != null)
+                return BotType.PokeBot;
+
+            // Try to detect RaidBot
+            var raidBotType = Type.GetType("SysBot.Pokemon.SV.BotRaid.Helpers.SVRaidBot, SysBot.Pokemon");
+            if (raidBotType != null)
+                return BotType.RaidBot;
+
+            return BotType.Unknown;
+        }
+        catch
+        {
+            return BotType.Unknown;
+        }
+    }
+
+    private static string GetVersionForBotType(BotType botType)
+    {
+        try
+        {
+            return botType switch
+            {
+                BotType.PokeBot => GetPokeBotVersion(),
+                BotType.RaidBot => GetRaidBotVersion(),
+                _ => "Unknown"
+            };
+        }
+        catch
+        {
+            return "Unknown";
+        }
+    }
+
+    private static string GetPokeBotVersion()
+    {
+        try
+        {
+            var pokeBotType = Type.GetType("SysBot.Pokemon.Helpers.PokeBot, SysBot.Pokemon");
+            if (pokeBotType != null)
+            {
+                var versionField = pokeBotType.GetField("Version",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (versionField != null)
+                {
+                    return versionField.GetValue(null)?.ToString() ?? "Unknown";
+                }
+            }
+            return "Unknown";
+        }
+        catch
+        {
+            return "Unknown";
+        }
+    }
+
+    private static string GetRaidBotVersion()
+    {
+        try
+        {
+            var raidBotType = Type.GetType("SysBot.Pokemon.SV.BotRaid.Helpers.SVRaidBot, SysBot.Pokemon");
+            if (raidBotType != null)
+            {
+                var versionField = raidBotType.GetField("Version",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (versionField != null)
+                {
+                    return versionField.GetValue(null)?.ToString() ?? "Unknown";
+                }
+            }
+            return "Unknown";
+        }
+        catch
+        {
+            return "Unknown";
         }
     }
 
@@ -292,14 +392,35 @@ public static class WebApiExtensions
             "REBOOTALL" => ExecuteGlobalCommand(BotControlCommand.RebootAndStop),
             "SCREENONALL" => ExecuteGlobalCommand(BotControlCommand.ScreenOnAll),
             "SCREENOFFALL" => ExecuteGlobalCommand(BotControlCommand.ScreenOffAll),
+                            "REFRESHMAPALL" => HandleRefreshMapAllCommand(),
             "LISTBOTS" => GetBotsList(),
             "STATUS" => GetBotStatuses(botId),
             "ISREADY" => CheckReady(),
             "INFO" => GetInstanceInfo(),
-            "VERSION" => PokeBot.Version,
+            "VERSION" => GetVersionForBotType(DetectBotType()),
             "UPDATE" => TriggerUpdate(),
             _ => $"ERROR: Unknown command '{cmd}'"
         };
+    }
+
+    private static string TryExecuteRaidBotCommand(BotControlCommand command)
+    {
+        try
+        {
+            var botType = DetectBotType();
+            if (botType == BotType.RaidBot)
+            {
+                return ExecuteGlobalCommand(command);
+            }
+            else
+            {
+                return "OK: Command not applicable to this bot type";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"ERROR: Failed to execute {command} - {ex.Message}";
+        }
     }
 
     private static string TriggerUpdate()
@@ -309,13 +430,25 @@ public static class WebApiExtensions
             if (_main == null)
                 return "ERROR: Main form not initialized";
 
+            var botType = DetectBotType();
+
             _main.BeginInvoke((MethodInvoker)(async () =>
             {
-                var (updateAvailable, _, newVersion) = await UpdateChecker.CheckForUpdatesAsync(false);
-                if (updateAvailable)
+                try
                 {
-                    var updateForm = new UpdateForm(false, newVersion, true);
-                    updateForm.PerformUpdate();
+                    var (updateAvailable, _, newVersion) = await CheckForUpdatesForBotType(botType);
+                    if (updateAvailable)
+                    {
+                        var updateForm = await CreateUpdateFormForBotType(botType, newVersion);
+                        if (updateForm != null)
+                        {
+                            updateForm.PerformUpdate();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtil.LogError($"Error during update trigger: {ex.Message}", "WebServer");
                 }
             }));
 
@@ -324,6 +457,252 @@ public static class WebApiExtensions
         catch (Exception ex)
         {
             return $"ERROR: {ex.Message}";
+        }
+    }
+
+    private static async Task<(bool, string, string)> CheckForUpdatesForBotType(BotType botType)
+    {
+        try
+        {
+            return botType switch
+            {
+                BotType.PokeBot => await CheckPokeBotUpdates(),
+                BotType.RaidBot => await CheckRaidBotUpdates(),
+                _ => (false, "", "Unknown")
+            };
+        }
+        catch
+        {
+            return (false, "", "Unknown");
+        }
+    }
+
+    private static async Task<(bool, string, string)> CheckPokeBotUpdates()
+    {
+        try
+        {
+            var result = await UpdateChecker.CheckForUpdatesAsync(false);
+            return (result.UpdateAvailable, "", result.NewVersion);
+        }
+        catch
+        {
+            return (false, "", "Unknown");
+        }
+    }
+
+    private static async Task<(bool, string, string)> CheckRaidBotUpdates()
+    {
+        try
+        {
+            // Use RaidBot's UpdateChecker if available
+            var raidUpdateCheckerType = Type.GetType("SysBot.Pokemon.SV.BotRaid.Helpers.UpdateChecker, SysBot.Pokemon");
+            if (raidUpdateCheckerType != null)
+            {
+                var checkMethod = raidUpdateCheckerType.GetMethod("CheckForUpdatesAsync");
+                if (checkMethod != null)
+                {
+                    var task = (Task<(bool, string, string)>)checkMethod.Invoke(null, new object[] { false });
+                    return await task;
+                }
+            }
+
+            return (false, "", "Unknown");
+        }
+        catch
+        {
+            return (false, "", "Unknown");
+        }
+    }
+
+    private static async Task<dynamic?> CreateUpdateFormForBotType(BotType botType, string latestVersion)
+    {
+        try
+        {
+            return botType switch
+            {
+                BotType.PokeBot => new UpdateForm(false, latestVersion, true),
+                BotType.RaidBot => await CreateRaidBotUpdateForm(latestVersion),
+                _ => null
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<dynamic?> CreateRaidBotUpdateForm(string latestVersion)
+    {
+        try
+        {
+            var updateFormType = Type.GetType("SysBot.Pokemon.WinForms.UpdateForm, SysBot.Pokemon.WinForms");
+            if (updateFormType != null)
+            {
+                return Activator.CreateInstance(updateFormType, false, latestVersion, true);
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string GetInstanceInfo()
+    {
+        try
+        {
+            var config = GetConfig();
+            var botType = DetectBotType();
+            var version = GetVersionForBotType(botType);
+            var mode = config?.Mode.ToString() ?? "Unknown";
+            var name = GetInstanceName(config, mode, botType);
+
+            var info = new
+            {
+                Version = version,
+                Mode = mode,
+                Name = name,
+                Environment.ProcessId,
+                Port = _tcpPort,
+                BotType = botType.ToString()
+            };
+
+            return System.Text.Json.JsonSerializer.Serialize(info);
+        }
+        catch (Exception ex)
+        {
+            return $"ERROR: Failed to get instance info - {ex.Message}";
+        }
+    }
+
+    private static string GetInstanceName(ProgramConfig? config, string mode, BotType botType)
+    {
+        if (!string.IsNullOrEmpty(config?.Hub?.BotName))
+            return config.Hub.BotName;
+
+        return botType switch
+        {
+            BotType.PokeBot => mode switch
+            {
+                "LGPE" => "LGPE Bot",
+                "BDSP" => "BDSP Bot",
+                "SWSH" => "SWSH Bot",
+                "SV" => "SV PokeBot",
+                "LA" => "LA Bot",
+                _ => "PokeBot"
+            },
+            BotType.RaidBot => "SV RaidBot",
+            _ => "Universal Bot"
+        };
+    }
+
+    private static void CreatePortFile()
+    {
+        try
+        {
+            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
+            var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
+
+            var botType = DetectBotType();
+            var portFileName = botType switch
+            {
+                BotType.PokeBot => $"PokeBot_{Environment.ProcessId}.port",
+                BotType.RaidBot => $"SVRaidBot_{Environment.ProcessId}.port",
+                _ => $"UniversalBot_{Environment.ProcessId}.port"
+            };
+
+            var portFile = Path.Combine(exeDir, portFileName);
+            File.WriteAllText(portFile, _tcpPort.ToString());
+            LogUtil.LogInfo($"Created port file: {portFileName} with port {_tcpPort}", "WebServer");
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Failed to create port file: {ex.Message}", "WebServer");
+        }
+    }
+
+    private static void CleanupPortFile()
+    {
+        try
+        {
+            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
+            var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
+
+            var botType = DetectBotType();
+            var portFileName = botType switch
+            {
+                BotType.PokeBot => $"PokeBot_{Environment.ProcessId}.port",
+                BotType.RaidBot => $"SVRaidBot_{Environment.ProcessId}.port",
+                _ => $"UniversalBot_{Environment.ProcessId}.port"
+            };
+
+            var portFile = Path.Combine(exeDir, portFileName);
+
+            if (File.Exists(portFile))
+            {
+                File.Delete(portFile);
+                LogUtil.LogInfo($"Cleaned up port file: {portFileName}", "WebServer");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Failed to cleanup port file: {ex.Message}", "WebServer");
+        }
+    }
+
+    private static int FindAvailablePort(int startPort)
+    {
+        for (int port = startPort; port < startPort + 100; port++)
+        {
+            if (!IsPortInUse(port))
+                return port;
+        }
+        throw new InvalidOperationException("No available ports found");
+    }
+
+    private static bool IsPortInUse(int port)
+    {
+        try
+        {
+            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(200) };
+            var response = client.GetAsync($"http://localhost:{port}/api/bot/instances").Result;
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            try
+            {
+                using var tcpClient = new TcpClient();
+                var result = tcpClient.BeginConnect("127.0.0.1", port, null, null);
+                var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(200));
+                if (success)
+                {
+                    tcpClient.EndConnect(result);
+                    return true;
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public static void StopWebServer(this Main mainForm)
+    {
+        try
+        {
+            _monitorCts?.Cancel();
+            _cts?.Cancel();
+            _tcp?.Stop();
+            _server?.Dispose();
+            CleanupPortFile();
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Error stopping web server: {ex.Message}", "WebServer");
         }
     }
 
@@ -450,32 +829,6 @@ public static class WebApiExtensions
         }
     }
 
-    private static string GetInstanceInfo()
-    {
-        try
-        {
-            var config = GetConfig();
-            var version = GetVersion();
-            var mode = config?.Mode.ToString() ?? "Unknown";
-            var name = GetInstanceName(config, mode);
-
-            var info = new
-            {
-                Version = version,
-                Mode = mode,
-                Name = name,
-                Environment.ProcessId,
-                Port = _tcpPort
-            };
-
-            return System.Text.Json.JsonSerializer.Serialize(info);
-        }
-        catch (Exception ex)
-        {
-            return $"ERROR: Failed to get instance info - {ex.Message}";
-        }
-    }
-
     private static List<BotController> GetBotControllers()
     {
         var flpBotsField = _main!.GetType().GetField("FLP_Bots",
@@ -501,111 +854,9 @@ public static class WebApiExtensions
         return state.Connection.IP;
     }
 
-    private static string GetVersion()
+    private static string HandleRefreshMapAllCommand()
     {
-        return PokeBot.Version;
-    }
-
-    private static string GetInstanceName(ProgramConfig? config, string mode)
-    {
-        if (!string.IsNullOrEmpty(config?.Hub?.BotName))
-            return config.Hub.BotName;
-
-        return mode switch
-        {
-            "LGPE" => "LGPE",
-            "BDSP" => "BDSP",
-            "SWSH" => "SWSH",
-            "SV" => "SV",
-            "LA" => "LA",
-            _ => "PokeBot"
-        };
-    }
-
-    private static void CreatePortFile()
-    {
-        try
-        {
-            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
-            var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
-            var portFile = Path.Combine(exeDir, $"PokeBot_{Environment.ProcessId}.port");
-            File.WriteAllText(portFile, _tcpPort.ToString());
-        }
-        catch (Exception ex)
-        {
-            LogUtil.LogError($"Failed to create port file: {ex.Message}", "WebServer");
-        }
-    }
-
-    private static void CleanupPortFile()
-    {
-        try
-        {
-            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
-            var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
-            var portFile = Path.Combine(exeDir, $"PokeBot_{Environment.ProcessId}.port");
-
-            if (File.Exists(portFile))
-                File.Delete(portFile);
-        }
-        catch (Exception ex)
-        {
-            LogUtil.LogError($"Failed to cleanup port file: {ex.Message}", "WebServer");
-        }
-    }
-
-    private static int FindAvailablePort(int startPort)
-    {
-        for (int port = startPort; port < startPort + 100; port++)
-        {
-            if (!IsPortInUse(port))
-                return port;
-        }
-        throw new InvalidOperationException("No available ports found");
-    }
-
-    private static bool IsPortInUse(int port)
-    {
-        try
-        {
-            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(200) };
-            var response = client.GetAsync($"http://localhost:{port}/api/bot/instances").Result;
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            try
-            {
-                using var tcpClient = new TcpClient();
-                var result = tcpClient.BeginConnect("127.0.0.1", port, null, null);
-                var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(200));
-                if (success)
-                {
-                    tcpClient.EndConnect(result);
-                    return true;
-                }
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-    }
-
-    public static void StopWebServer(this Main mainForm)
-    {
-        try
-        {
-            _monitorCts?.Cancel();
-            _cts?.Cancel();
-            _tcp?.Stop();
-            _server?.Dispose();
-            CleanupPortFile();
-        }
-        catch (Exception ex)
-        {
-            LogUtil.LogError($"Error stopping web server: {ex.Message}", "WebServer");
-        }
+        // RefreshMap is only available for RaidBot, not PokeBot
+        return "ERROR: REFRESHMAPALL command is only available for RaidBot instances";
     }
 }

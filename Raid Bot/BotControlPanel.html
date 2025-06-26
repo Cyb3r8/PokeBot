@@ -239,16 +239,6 @@
             border-color: var(--danger);
         }
 
-        .btn-raidbot {
-            background: linear-gradient(135deg, #8b5cf6, #a855f7);
-            border-color: #8b5cf6;
-            color: white;
-        }
-
-            .btn-raidbot:hover:not(:disabled) {
-                background: linear-gradient(135deg, #7c3aed, #9333ea);
-            }
-
         .instances-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(min(100%, 350px), 1fr));
@@ -278,22 +268,6 @@
                 box-shadow: var(--shadow-hover);
             }
 
-            .instance-card.pokebot {
-                border-left: 4px solid #10b981;
-            }
-
-                .instance-card.pokebot .instance-header {
-                    background: linear-gradient(135deg, var(--bg-secondary), rgba(16, 185, 129, 0.1));
-                }
-
-            .instance-card.raidbot {
-                border: 2px solid #8b5cf6;
-            }
-
-                .instance-card.raidbot .instance-header {
-                    background: linear-gradient(135deg, var(--bg-secondary), rgba(139, 92, 246, 0.1));
-                }
-
         .instance-header {
             background: var(--bg-secondary);
             padding: var(--spacing-md) var(--spacing-lg);
@@ -314,19 +288,6 @@
             flex: 1;
         }
 
-        .bot-type-icon {
-            font-size: 1.2rem;
-            flex-shrink: 0;
-        }
-
-        .bot-type-icon.pokebot {
-            color: #10b981;
-        }
-
-        .bot-type-icon.raidbot {
-            color: #8b5cf6;
-        }
-
         .instance-badge {
             padding: var(--spacing-xs) var(--spacing-sm);
             border-radius: 20px;
@@ -337,18 +298,6 @@
             white-space: nowrap;
             flex-shrink: 0;
         }
-
-            .instance-badge.pokebot {
-                background: rgba(16, 185, 129, 0.2);
-                color: #10b981;
-                border: 1px solid #10b981;
-            }
-
-            .instance-badge.raidbot {
-                background: rgba(139, 92, 246, 0.2);
-                color: #8b5cf6;
-                border: 1px solid #8b5cf6;
-            }
 
         .instance-body {
             padding: var(--spacing-lg);
@@ -1194,7 +1143,7 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <h1>Universal Bot Control Center</h1>
+                    <h1>Universal Control Center</h1>
                     <div class="status-indicator"></div>
                 </div>
                 <div class="refresh-status">
@@ -1215,7 +1164,7 @@
                     <button class="btn" onclick="sendGlobalCommand('reboot')">🔌 Reboot All</button>
                     <button class="btn" onclick="sendGlobalCommand('screenon')">💡 Screen On</button>
                     <button class="btn" onclick="sendGlobalCommand('screenoff')">🌙 Screen Off</button>
-                    <button class="btn btn-raidbot" onclick="sendGlobalCommand('refreshmap')" id="refreshMapBtn" style="display: none;">🗺️ Refresh Map</button>
+                    <button class="btn btn-primary" onclick="sendGlobalCommand('refreshmap')" id="refreshmap-btn" style="display: none;">🗺️ Refresh Map</button>
                     <button class="btn btn-primary" onclick="updateAllInstances()">⬆️ Update All</button>
                 </div>
             </div>
@@ -1933,6 +1882,9 @@
                 const data = await response.json();
                 instances = data.Instances;
 
+                // Check bot type and show/hide RefreshMap button
+                updateUIBasedOnBotType(data.Instances);
+
                 // Only render if no menus are open or it's a manual refresh
                 if (!document.querySelector('.action-menu.show') || isManual) {
                     renderInstances();
@@ -1943,6 +1895,40 @@
             }
         }
 
+        function updateUIBasedOnBotType(instances) {
+            // Check if any instance is a Raid Bot
+            const hasRaidBot = instances.some(instance => 
+                instance.BotType === 'Raid' || 
+                instance.Mode?.toLowerCase().includes('raid') ||
+                instance.Mode?.toLowerCase().includes('den')
+            );
+
+            const hasTradeBots = instances.some(instance => 
+                instance.BotType === 'Trade' || 
+                instance.Mode?.toLowerCase().includes('trade') ||
+                instance.Mode?.toLowerCase().includes('distribution')
+            );
+
+            // Show RefreshMap button only if Raid Bots are present
+            const refreshMapBtn = document.getElementById('refreshmap-btn');
+            if (refreshMapBtn) {
+                refreshMapBtn.style.display = hasRaidBot ? 'block' : 'none';
+            }
+
+            // Update header to show bot types
+            updateHeaderBotTypes(hasRaidBot, hasTradeBots, instances.length);
+        }
+
+        function updateHeaderBotTypes(hasRaid, hasTrade, totalInstances) {
+            const header = document.querySelector('.logo h1');
+            let botTypes = [];
+            if (hasRaid) botTypes.push('Raid');
+            if (hasTrade) botTypes.push('Trade');
+            
+            const typeText = botTypes.length > 0 ? ` (${botTypes.join(' + ')})` : '';
+            header.textContent = `Universal Control Center${typeText} - ${totalInstances} Instance${totalInstances !== 1 ? 's' : ''}`;
+        }
+
         function renderInstances() {
             const container = document.getElementById('instances-container');
 
@@ -1951,25 +1937,12 @@
                 return;
             }
 
-            // Check if we have any RaidBots to show the refresh map button
-            const hasRaidBots = instances.some(instance => instance.BotType === 'RaidBot');
-            const refreshMapBtn = document.getElementById('refreshMapBtn');
-            if (refreshMapBtn) {
-                refreshMapBtn.style.display = hasRaidBots ? 'inline-flex' : 'none';
-            }
-
             container.innerHTML = instances.map(instance => {
                 const isOnline = instance.IsOnline || false;
                 const statusClass = isOnline ? 'online' : 'offline';
-                const botType = instance.BotType || 'Unknown';
-                const botTypeClass = botType.toLowerCase();
                 const statusIndicator = isOnline ?
                     '<span class="online-indicator"></span>Connected' :
                     '<span class="offline-indicator"></span>Disconnected';
-
-                // Bot type icon and name
-                const botIcon = getBotTypeIcon(botType);
-                const botTypeName = getBotTypeName(botType);
 
                 let instanceStatus = 'stopped';
                 let instanceStatusText = 'Stopped';
@@ -2001,14 +1974,13 @@
                 }
 
                 return `
-                            <div class="instance-card ${statusClass} ${botTypeClass}" data-port="${instance.Port}">
+                            <div class="instance-card ${statusClass}" data-port="${instance.Port}">
                                 <div class="instance-header">
                                     <h3 class="instance-title">
-                                        <span class="bot-type-icon ${botTypeClass}">${botIcon}</span>
                                         ${instance.Name}
                                         <span class="instance-status-badge ${instanceStatus}">${instanceStatusText}</span>
                                     </h3>
-                                    <span class="instance-badge ${botTypeClass}">${botTypeName}</span>
+                                    <span class="instance-badge">Port ${instance.Port}</span>
                                 </div>
                                 <div class="instance-body">
                                     <div class="instance-info">
@@ -2084,40 +2056,16 @@
                                             <button class="action-menu-item" onclick="sendInstanceCommand(${instance.Port}, 'screenoff')">
                                                 🌙 Screen Off
                                             </button>
-                                            ${botType === 'RaidBot' ? `
-                                            <div class="action-menu-divider"></div>
-                                            <button class="action-menu-item" onclick="sendInstanceCommand(${instance.Port}, 'refreshmap')" style="color: #8b5cf6;">
+                                            ${(instance.BotType === 'Raid' || instance.Mode?.toLowerCase().includes('raid')) ? `
+                                            <button class="action-menu-item" onclick="sendInstanceCommand(${instance.Port}, 'refreshmap')">
                                                 🗺️ Refresh Map
-                                            </button>
-                                            ` : ''}
+                                            </button>` : ''}
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         `;
             }).join('');
-        }
-
-        function getBotTypeIcon(botType) {
-            switch (botType) {
-                case 'PokeBot':
-                    return '🎮';
-                case 'RaidBot':
-                    return '⚔️';
-                default:
-                    return '🤖';
-            }
-        }
-
-        function getBotTypeName(botType) {
-            switch (botType) {
-                case 'PokeBot':
-                    return 'PokeBot';
-                case 'RaidBot':
-                    return 'RaidBot';
-                default:
-                    return 'Unknown';
-            }
         }
 
         function manualRefresh() {

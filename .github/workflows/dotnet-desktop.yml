@@ -102,7 +102,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN_POKEBOT }}
         with:
           tag_name: ${{ env.CURRENT_VERSION }}
           release_name: Release ${{ env.CURRENT_VERSION }}
@@ -115,7 +115,7 @@ jobs:
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN_POKEBOT }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./publish/PokeBot.exe
@@ -124,7 +124,7 @@ jobs:
       - name: Update Last Known Version
         if: success()
         env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN_POKEBOT }}
         run: |
           gh secret set LAST_KNOWN_VERSION -b"${{ env.CURRENT_VERSION }}"
           echo "LAST_KNOWN_VERSION updated to $CURRENT_VERSION"

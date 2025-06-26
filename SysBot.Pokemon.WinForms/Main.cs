@@ -108,7 +108,7 @@ namespace SysBot.Pokemon.WinForms
 
             RTB_Logs.MaxLength = 32767;
             LoadControls();
-            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "GenPKM.com" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
+            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "hideoutpk.de" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
             trayIcon.Text = Text;
             _ = Task.Run(BotMonitor);
             InitUtil.InitializeStubs(Config.Mode);
@@ -574,7 +574,7 @@ namespace SysBot.Pokemon.WinForms
         private void UpdateRunnerAndUI()
         {
             RunningEnvironment = GetRunner(Config);
-            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "GenPKM.com" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
+            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "hideoutpk.de" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
         }
 
         private void UpdateStatusIndicatorPulse()

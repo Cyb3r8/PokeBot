@@ -2,7 +2,6 @@ using Discord;
 using Discord.Commands;
 using Discord.Net;
 using Discord.WebSocket;
-using Newtonsoft.Json;
 using PKHeX.Core;
 using SysBot.Base;
 using SysBot.Pokemon.Helpers;
@@ -301,7 +300,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                     return;
                 }
                 pkm = EntityConverter.ConvertToType(pkm, typeof(T), out _) ?? pkm;
-
                 if (pkm is not T pk)
                 {
                     _ = ReplyAndDeleteAsync("Oops! I wasn't able to create an egg for that.", 2, Context.Message);
@@ -321,13 +319,11 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                         pk8.Version = (GameVersion)GameVersion.SW;
                     }
                 }
-                                
+
                 pk.IsNicknamed = false;
                 TradeExtensions<T>.EggTrade(pk, template);
-
                 var sig = Context.User.GetFavor();
                 await AddTradeToQueueAsync(code, Context.User.Username, pk, sig, Context.User).ConfigureAwait(false);
-
                 _ = DeleteMessagesAfterDelayAsync(null, Context.Message, 2);
             }
             catch (Exception ex)
@@ -636,6 +632,11 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                             pk8.Version = (GameVersion)GameVersion.SW;
                         }
                     }
+
+                    eggPk.IsNicknamed = false;
+                    TradeExtensions<T>.EggTrade(eggPk, template);
+                    pkm = eggPk;
+                    la = new LegalityAnalysis(pkm);
                 }
                 else
                 {
@@ -1638,107 +1639,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         {
             LogUtil.LogSafe(ex, nameof(TradeModule<T>));
         }
-    }
-
-    [Command("tradeprofile")]
-    [Alias("tp")]
-    [Summary("Displays the user's trade profile based on their stored trade code information.")]
-    public async Task ProfileCommand()
-    {
-        var userMessage = Context.Message;
-
-        var userId = Context.User.Id.ToString();
-
-        // Path to the tradecodes.json file
-        const string TradeCodesFile = "tradecodes.json";
-
-        // Check if the file exists
-        if (!File.Exists(TradeCodesFile))
-        {
-            await Context.Channel.SendMessageAsync("The tradecodes file does not exist.").ConfigureAwait(false);
-            await DeleteCommandMessage(userMessage);
-            return;
-        }
-
-        // Read and parse the JSON file
-        string jsonData = await File.ReadAllTextAsync(TradeCodesFile).ConfigureAwait(false);
-        var tradeData = JsonConvert.DeserializeObject<Dictionary<string, TradeCodeInfo>>(jsonData);
-
-        if (tradeData == null || !tradeData.ContainsKey(userId))
-        {
-            await Context.Channel.SendMessageAsync("No trade profile found for you in the database.").ConfigureAwait(false);
-            await DeleteCommandMessage(userMessage);
-            return;
-        }
-
-        // Get user information
-        var userInfo = tradeData[userId];
-
-        // Format the trade code
-        string formattedTradeCode = $"{userInfo.Code / 10000:D4}-{userInfo.Code % 10000:D4}";
-
-        // Custom image URL for the thumbnail
-        const string CustomThumbnailUrl = "https://raw.githubusercontent.com/Joseph11024/Bot-Images/main/Empire/Trainer_Info.png";
-
-        // Validate fields
-        string ot = string.IsNullOrWhiteSpace(userInfo.OT) ? "Unknown" : userInfo.OT;
-        string tid = userInfo.TID.ToString();
-        string sid = userInfo.SID.ToString();
-        string tradeCount = userInfo.TradeCount.ToString();
-
-        // Create the embed with a custom thumbnail
-        var embed = new EmbedBuilder()
-            .WithTitle($"{Context.User.Username}'s Trade-Profile")
-            .WithColor(Color.Blue)
-            .WithThumbnailUrl(CustomThumbnailUrl)
-            .WithDescription($"**Trade-Code:** {formattedTradeCode}\n**Trainer (OT):** {ot}\n**TID:** {tid}\n**SID:** {sid}")
-            //           .AddField("Trade Code", formattedTradeCode, true)
-            //           .AddField("OT", ot, true)
-            //           .AddField("TID", tid, true)
-            //           .AddField("SID", sid, true)
-            //           .AddField("Trade Count", tradeCount, true)
-            .WithFooter($"Trade-Count: {tradeCount}")
-            .Build();
-
-        // Try sending the embed to the user's DMs
-        try
-        {
-            var dmChannel = await Context.User.CreateDMChannelAsync();
-            await dmChannel.SendMessageAsync(embed: embed).ConfigureAwait(false);
-            await Context.Channel.SendMessageAsync($"{Context.User.Mention}, I've sent your trade profile to your DMs.").ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Catch any general exceptions (e.g., if the user has DMs disabled)
-            await Context.Channel.SendMessageAsync($"{Context.User.Mention}, I couldn't send you a DM. Please check your privacy settings.").ConfigureAwait(false);
-            Console.WriteLine($"Failed to send DM to user {Context.User.Id}: {ex.Message}");
-        }
-
-        // Delete the user's command message
-        await DeleteCommandMessage(userMessage);
-    }
-
-    // Helper method to delete a message
-    private async Task DeleteCommandMessage(IUserMessage message)
-    {
-        try
-        {
-            await message.DeleteAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to delete message: {ex.Message}");
-        }
-    }
-
-    // Helper class to deserialize trade data
-    private class TradeCodeInfo
-    {
-        public int Code { get; set; }
-        public string OT { get; set; }
-        public int SID { get; set; }
-        public int TID { get; set; }
-        public int TradeCount { get; set; }
     }
 
     [Command("medals")]

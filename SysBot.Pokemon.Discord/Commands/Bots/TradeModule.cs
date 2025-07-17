@@ -476,8 +476,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                     return;
                 }
 
-                TradeExtensions<T>.CheckAndSetUnrivaledDate(pk);
-
                 if (pk.WasEgg)
                     pk.EggMetDate = pk.MetDate;
 
@@ -691,8 +689,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                     _ = DeleteMessagesAfterDelayAsync(message, Context.Message, 30);
                     return;
                 }
-
-                TradeExtensions<T>.CheckAndSetUnrivaledDate(pk);
 
                 if (pk.WasEgg)
                     pk.EggMetDate = pk.MetDate;
@@ -923,8 +919,7 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                     await ReplyAsync($"The {spec} in the provided file is not legal.").ConfigureAwait(false);
                     return;
                 }
-                // Set correct MetDate for Mightiest Mark
-                TradeExtensions<T>.CheckAndSetUnrivaledDate(pk);
+
                 pk.ResetPartyStats();
 
                 var userID = Context.User.Id;
@@ -1046,8 +1041,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                         }
                     }
                 }
-
-                TradeExtensions<T>.CheckAndSetUnrivaledDate(pk);
 
                 if (pkm.WasEgg)
                     pkm.EggMetDate = pkm.MetDate;

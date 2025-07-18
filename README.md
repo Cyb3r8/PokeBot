@@ -69,7 +69,6 @@ netsh advfirewall firewall add rule name="PokeBot Web" dir=in action=allow proto
 | `trade` | `t` | Trade a Pokémon from Showdown set or file | `.trade [code] <showdown_set>` or attach file | Trade Role |
 | `hidetrade` | `ht` | Trade without showing embed details | `.hidetrade [code] <showdown_set>` or attach file | Trade Role |
 | `batchTrade` | `bt` | Trade multiple Pokémon (max 3) | `.bt <sets_separated_by_--->` | Trade Role |
-| `batchtradezip` | `btz` | Trade multiple Pokémon from zip file (max 6) | `.btz` + attach zip file | Trade Role |
 | `egg` | - | Trade an egg from provided Pokémon name | `.egg [code] <pokemon_name>` | Trade Role |
 
 ## Specialized Trading Commands

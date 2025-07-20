@@ -312,7 +312,7 @@ public static class WebApiExtensions
             {
                 try
                 {
-                    _tcp = new TcpListener(System.Net.IPAddress.Loopback, _tcpPort);
+                    _tcp = new TcpListener(System.Net.IPAddress.Any, _tcpPort);
                     _tcp.Start();
 
                     LogUtil.LogInfo($"TCP listener started successfully on port {_tcpPort}", "TCP");

@@ -60,8 +60,11 @@ public class DiscordSettings
         Custom
     }
 
+    [Category(Startup), Description("Bot login token.")]
+    public string Token { get; set; } = string.Empty;
+
     [Category(Operation), Description("Additional text to add to the beginning of the embed description.")]
-    public string[] AdditionalEmbedText { get; set; } = Array.Empty<string>();
+    public string[] AdditionalEmbedText { get; set; } = [];
 
     [Category(Users), Description("Disabling this will remove global sudo support.")]
     public bool AllowGlobalSudo { get; set; } = true;
@@ -153,9 +156,6 @@ public class DiscordSettings
     // Operation
     [Category(Servers), Description("Servers with these IDs will not be able to use the bot, and it will leave the server.")]
     public RemoteControlAccessList ServerBlacklist { get; set; } = new() { AllowIfEmpty = false };
-
-    [Category(Startup), Description("Bot login token.")]
-    public string Token { get; set; } = string.Empty;
 
     [Category(Channels), Description("Logger channels that will log trade start messages.")]
     public RemoteControlAccessList TradeStartingChannels { get; set; } = new();

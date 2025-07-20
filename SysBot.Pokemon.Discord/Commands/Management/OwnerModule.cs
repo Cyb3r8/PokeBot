@@ -306,7 +306,7 @@ public class OwnerModule<T> : SudoModule<T> where T : PKM, new()
                     byte[] bytes;
                     try
                     {
-                        bytes = await bot.Bot.Connection.PixelPeek(token).ConfigureAwait(false) ?? Array.Empty<byte>();
+                        bytes = await bot.Bot.Connection.PixelPeek(token).ConfigureAwait(false) ?? [];
                     }
                     catch (Exception ex)
                     {

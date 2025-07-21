@@ -82,17 +82,8 @@ public static class UpdateManager
             }
             else if (botType == "RaidBot")
             {
-                var raidUpdateCheckerType = Type.GetType("SysBot.Pokemon.SV.BotRaid.Helpers.UpdateChecker, SysBot.Pokemon");
-                if (raidUpdateCheckerType != null)
-                {
-                    var checkMethod = raidUpdateCheckerType.GetMethod("CheckForUpdatesAsync");
-                    if (checkMethod != null)
-                    {
-                        var task = (Task<(bool, string, string)>)checkMethod.Invoke(null, new object[] { false });
-                        var (updateAvailable, _, latestVersion) = await task;
-                        return updateAvailable ? latestVersion ?? "Unknown" : "Unknown";
-                    }
-                }
+                var (updateAvailable, _, latestVersion) = await RaidBotUpdateChecker.CheckForUpdatesAsync(false);
+                return updateAvailable ? latestVersion ?? "Unknown" : "Unknown";
             }
         }
         catch (Exception ex)
@@ -152,22 +143,17 @@ public static class UpdateManager
                     LogUtil.LogInfo($"Checking updates for {raidBotInstances.Count} RaidBot instances", "UpdateManager");
                     try
                     {
-                        var raidUpdateCheckerType = Type.GetType("SysBot.Pokemon.SV.BotRaid.Helpers.UpdateChecker, SysBot.Pokemon");
-                        if (raidUpdateCheckerType != null)
+                        var (raidBotUpdateAvailable, _, raidBotLatestVersion) = await RaidBotUpdateChecker.CheckForUpdatesAsync(false);
+                        
+                        if (raidBotUpdateAvailable && !string.IsNullOrEmpty(raidBotLatestVersion))
                         {
-                            var checkMethod = raidUpdateCheckerType.GetMethod("CheckForUpdatesAsync");
-                            if (checkMethod != null)
-                            {
-                                var task = (Task<(bool, string, string)>)checkMethod.Invoke(null, new object[] { false });
-                                var (raidBotUpdateAvailable, _, raidBotLatestVersion) = await task;
-                                
-                                if (raidBotUpdateAvailable && !string.IsNullOrEmpty(raidBotLatestVersion))
-                                {
-                                    var raidBotNeedingUpdate = raidBotInstances.Where(i => i.Version != raidBotLatestVersion).ToList();
-                                    instancesNeedingUpdate.AddRange(raidBotNeedingUpdate);
-                                    LogUtil.LogInfo($"{raidBotNeedingUpdate.Count} RaidBot instances need updating to {raidBotLatestVersion}", "UpdateManager");
-                                }
-                            }
+                            var raidBotNeedingUpdate = raidBotInstances.Where(i => i.Version != raidBotLatestVersion).ToList();
+                            instancesNeedingUpdate.AddRange(raidBotNeedingUpdate);
+                            LogUtil.LogInfo($"{raidBotNeedingUpdate.Count} RaidBot instances need updating to {raidBotLatestVersion}", "UpdateManager");
+                        }
+                        else
+                        {
+                            LogUtil.LogInfo("No RaidBot updates available", "UpdateManager");
                         }
                     }
                     catch (Exception ex)
@@ -835,7 +821,7 @@ public static class UpdateManager
         {
             using var client = new System.Net.Sockets.TcpClient();
             var result = client.BeginConnect("127.0.0.1", port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(200)); // Reduziert von 1s auf 200ms
             if (success)
             {
                 client.EndConnect(result);

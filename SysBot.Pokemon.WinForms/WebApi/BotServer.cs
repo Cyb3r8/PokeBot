@@ -1127,7 +1127,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         {
             using var client = new TcpClient();
             var result = client.BeginConnect(ip, port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(200)); // Reduziert von 1s auf 200ms
             if (success)
             {
                 client.EndConnect(result);
@@ -1325,7 +1325,21 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         try
         {
             using var client = new TcpClient();
-            client.Connect(ip, port);
+            
+            // Optimierter Timeout-basierter Connect
+            var result = client.BeginConnect(ip, port, null, null);
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(500)); // 500ms statt default
+            
+            if (!success || !client.Connected)
+            {
+                return "ERROR: Connection timeout";
+            }
+            
+            client.EndConnect(result);
+            
+            // Reduzierte Socket-Timeouts
+            client.ReceiveTimeout = 1000;  // 1s statt default
+            client.SendTimeout = 1000;     // 1s statt default
 
             using var stream = client.GetStream();
             using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
@@ -1334,9 +1348,9 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             writer.WriteLine(command);
             return reader.ReadLine() ?? "No response";
         }
-        catch
+        catch (Exception ex)
         {
-            return "Failed to connect";
+            return $"ERROR: {ex.Message}";
         }
     }
 

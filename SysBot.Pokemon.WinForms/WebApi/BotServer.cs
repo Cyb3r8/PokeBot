@@ -631,27 +631,14 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
 
     private bool IsLocalInstance(string ip, int port)
     {
-        // Eine Instanz ist lokal, wenn:
-        // 1. Die IP localhost ist UND der Port unser lokaler TCP-Port ist
-        // 2. Oder wenn es explizit nicht als Remote-Instanz bekannt ist und localhost IP hat
+        // Eine Instanz ist nur dann lokal, wenn sie EXAKT unsere Master-Instanz ist
+        // (gleiche IP UND gleicher Port wie unser TCP-Port)
         
         var isLocalhostIP = ip == "127.0.0.1" || ip == "localhost";
         var isOurPort = port == _tcpPort;
         
-        if (isLocalhostIP && isOurPort)
-        {
-            // Das ist definitiv unsere lokale Instanz
-            return true;
-        }
-        
-        if (!isLocalhostIP)
-        {
-            // Nicht-localhost IPs sind immer remote
-            return false;
-        }
-        
-        // Localhost IP aber anderer Port - prüfen ob es remote ist
-        return !IsRemoteInstance(ip, port);
+        // Nur wenn es sowohl localhost IP als auch unser Port ist, behandeln wir es als lokale Instanz
+        return isLocalhostIP && isOurPort;
     }
 
     private string GetInstances()

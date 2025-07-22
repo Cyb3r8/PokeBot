@@ -1386,7 +1386,12 @@
                     <button class="btn" onclick="sendGlobalCommand('screenon')">💡 Screen On</button>
                     <button class="btn" onclick="sendGlobalCommand('screenoff')">🌙 Screen Off</button>
                     <button class="btn btn-raidbot" onclick="sendGlobalCommand('refreshmap')" id="refreshMapBtn" style="display: none;">🗺️ Refresh Map</button>
-                    <button class="btn btn-primary" onclick="updateAllInstances()">⬆️ Update All</button>
+                    <button class="btn btn-primary" onclick="updatePokeBotInstances()" id="updatePokeBotBtn">
+                        <img src="update_pokebot.png" style="width: 16px; height: 16px; margin-right: 4px;" alt="Update PokeBot"> Update PokeBot
+                    </button>
+                    <button class="btn btn-primary" onclick="updateRaidBotInstances()" id="updateRaidBotBtn">
+                        <img src="update_raidbot.png" style="width: 16px; height: 16px; margin-right: 4px;" alt="Update RaidBot"> Update RaidBot
+                    </button>
                 </div>
             </div>
 
@@ -1720,6 +1725,18 @@
                 refreshMapBtn.style.display = hasRaidBots ? 'inline-flex' : 'none';
             }
 
+            // Show/hide update buttons based on available bot types
+            const hasPokeBots = instances.some(instance => instance.BotType === 'PokeBot');
+            const updatePokeBotBtn = document.getElementById('updatePokeBotBtn');
+            const updateRaidBotBtn = document.getElementById('updateRaidBotBtn');
+            
+            if (updatePokeBotBtn) {
+                updatePokeBotBtn.style.display = hasPokeBots ? 'inline-flex' : 'none';
+            }
+            if (updateRaidBotBtn) {
+                updateRaidBotBtn.style.display = hasRaidBots ? 'inline-flex' : 'none';
+            }
+
             container.innerHTML = instances.map(instance => {
                 const isOnline = instance.IsOnline || false;
                 const statusClass = isOnline ? 'online' : 'offline';
@@ -1842,10 +1859,10 @@
                                         ` : ''}
 
                                         <div class="instance-controls">
-                                            <button class="action-menu-button" onclick="toggleActionMenu(event, ${instance.Port})" ${!isOnline ? 'disabled' : ''}>
+                                            <button class="action-menu-button" onclick="toggleActionMenu(event, '${instance.IP}', ${instance.Port})" ${!isOnline ? 'disabled' : ''}>
                                                 ⚡ Actions <span style="font-size: 0.75rem;">▼</span>
                                             </button>
-                                            <div class="action-menu" id="action-menu-${instance.Port}">
+                                            <div class="action-menu" id="action-menu-${instance.IP.replace(/\./g, '-')}-${instance.Port}">
                                                 <button class="action-menu-item success" onclick="sendInstanceCommand('${instance.IP}', ${instance.Port}, 'start')">
                                                     ▶️ Start
                                                 </button>
@@ -1886,13 +1903,14 @@
             }).join('');
         }
 
-        function toggleActionMenu(event, port) {
+        function toggleActionMenu(event, ip, port) {
             event.stopPropagation();
-            const menu = document.getElementById(`action-menu-${port}`);
+            const menuId = `action-menu-${ip.replace(/\./g, '-')}-${port}`;
+            const menu = document.getElementById(menuId);
             const allMenus = document.querySelectorAll('.action-menu');
 
             allMenus.forEach(m => {
-                if (m.id !== `action-menu-${port}`) {
+                if (m.id !== menuId) {
                     m.classList.remove('show');
                 }
             });
@@ -1940,7 +1958,8 @@
         }
 
         async function sendInstanceCommand(ip, port, command) {
-            document.getElementById(`action-menu-${port}`).classList.remove('show');
+            const menuId = `action-menu-${ip.replace(/\./g, '-')}-${port}`;
+            document.getElementById(menuId).classList.remove('show');
             isInteracting = false;
 
             showToast('info', 'Sending Command', `Sending ${command} to instance ${ip}:${port}...`);
@@ -1998,6 +2017,65 @@
                 console.error('Error checking updates:', error);
                 document.getElementById('new-version').textContent = 'Latest';
                 document.getElementById('changelog-content').textContent = 'Unable to fetch update information. Click Update to proceed.';
+            }
+        }
+
+        async function updatePokeBotInstances() {
+            await updateSpecificBotType('PokeBot');
+        }
+
+        async function updateRaidBotInstances() {
+            await updateSpecificBotType('RaidBot');
+        }
+
+        async function updateSpecificBotType(botType) {
+            showModal('progress-modal');
+            document.getElementById('progress-modal-title').textContent = `${botType} Update in Progress`;
+            document.getElementById('force-update-info').style.display = 'block';
+
+            updateState.type = 'update';
+            updateState.startTime = Date.now();
+            updateProgress(`Initializing ${botType} update process...`, `Starting background ${botType} update process`, 10);
+
+            try {
+                const endpoint = botType === 'PokeBot' ? 'pokebot' : 'raidbot';
+                const response = await fetch(`${API_BASE}/update/${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error(`Failed to start ${botType} update`);
+
+                const result = await response.json();
+                updateState.id = result.Id;
+
+                if (result.Info) {
+                    updateProgress(
+                        `${botType} update started`,
+                        result.Info,
+                        20
+                    );
+                    addLogEntry(`${botType} update process initiated in background`, 'info');
+                }
+
+                // Start monitoring update status
+                updateState.interval = setInterval(() => {
+                    checkUpdateStatus();
+                }, 2000);
+
+                // Pause auto-refresh during update
+                refreshPaused = true;
+
+            } catch (error) {
+                console.error(`Error starting ${botType} update:`, error);
+                updateProgress(`${botType} update failed`, error.message, 0);
+                addLogEntry(`Failed to start ${botType} update: ${error.message}`, 'error');
+                refreshPaused = false;
+
+                setTimeout(() => {
+                    closeModal('progress-modal');
+                    showToast('error', 'Error', `Failed to start ${botType} update process`);
+                }, 2000);
             }
         }
 

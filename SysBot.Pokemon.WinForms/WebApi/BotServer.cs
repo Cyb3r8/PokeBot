@@ -198,6 +198,8 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 "/api/bot/update/check" => await CheckForUpdates(),
                 "/api/bot/update/idle-status" => GetIdleStatus(),
                 "/api/bot/update/all" => await UpdateAllInstances(request),
+                "/api/bot/update/pokebot" => await UpdatePokeBotInstances(request),
+                "/api/bot/update/raidbot" => await UpdateRaidBotInstances(request),
                 "/api/bot/update/active" => GetActiveUpdates(),
                 "/api/bot/restart/all" => await RestartAllInstances(request),
                 "/api/bot/restart/proceed" => await ProceedWithRestarts(request),
@@ -352,6 +354,60 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         catch (Exception ex)
         {
             LogUtil.LogError($"Failed to start update: {ex.Message}", "WebServer");
+            return CreateErrorResponse(ex.Message);
+        }
+    }
+
+    private async Task<string> UpdatePokeBotInstances(HttpListenerRequest request)
+    {
+        try
+        {
+            // Start a new fire-and-forget background update for PokeBot instances only
+            var updateStatus = UpdateManager.StartPokeBotUpdate(_mainForm, _tcpPort);
+
+            LogUtil.LogInfo($"Started PokeBot update with ID: {updateStatus.Id}", "WebServer");
+
+            return JsonSerializer.Serialize(new
+            {
+                updateStatus.Id,
+                updateStatus.Stage,
+                updateStatus.Message,
+                updateStatus.Progress,
+                StartTime = updateStatus.StartTime.ToString("o"),
+                Success = true,
+                Info = "PokeBot update process started in background. It will continue even if this connection is closed."
+            });
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Failed to start PokeBot update: {ex.Message}", "WebServer");
+            return CreateErrorResponse(ex.Message);
+        }
+    }
+
+    private async Task<string> UpdateRaidBotInstances(HttpListenerRequest request)
+    {
+        try
+        {
+            // Start a new fire-and-forget background update for RaidBot instances only
+            var updateStatus = UpdateManager.StartRaidBotUpdate(_mainForm, _tcpPort);
+
+            LogUtil.LogInfo($"Started RaidBot update with ID: {updateStatus.Id}", "WebServer");
+
+            return JsonSerializer.Serialize(new
+            {
+                updateStatus.Id,
+                updateStatus.Stage,
+                updateStatus.Message,
+                updateStatus.Progress,
+                StartTime = updateStatus.StartTime.ToString("o"),
+                Success = true,
+                Info = "RaidBot update process started in background. It will continue even if this connection is closed."
+            });
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Failed to start RaidBot update: {ex.Message}", "WebServer");
             return CreateErrorResponse(ex.Message);
         }
     }

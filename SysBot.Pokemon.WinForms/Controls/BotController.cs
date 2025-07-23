@@ -1,4 +1,5 @@
 using SysBot.Base;
+using SysBot.Pokemon.Discord;
 using System;
 using System.ComponentModel;
 using System.Drawing;
@@ -17,92 +18,121 @@ namespace SysBot.Pokemon.WinForms
         private IPokeBotRunner? Runner;
         public EventHandler? Remove;
 
-        // Animation state
         private float hoverProgress = 0f;
-        private float progressValue = 0f;
         private bool isHovering = false;
         private DateTime animationStart = DateTime.Now;
-        private Color currentStatusColor = Color.FromArgb(87, 242, 135); // Green
-        private Color targetStatusColor = Color.FromArgb(87, 242, 135);
+        private Color currentStatusColor = Color.FromArgb(90, 186, 71);
+        private Color targetStatusColor = Color.FromArgb(90, 186, 71);
         private DateTime LastUpdateStatus = DateTime.Now;
+        private bool buttonHovering = false;
+        private float pulsePhase = 0f;
+        private bool shouldPulse = false;
+        private float glowIntensity = 0f;
+
+        private readonly Color CuztomBackground = Color.FromArgb(27, 40, 56);
+        private readonly Color CuztomDarkBackground = Color.FromArgb(22, 32, 45);
+        private readonly Color CuztomDarkerBackground = Color.FromArgb(16, 24, 34);
+        private readonly Color CuztomAccent = Color.FromArgb(102, 192, 244);
+        private readonly Color CuztomText = Color.FromArgb(239, 239, 239);
+        private readonly Color CuztomSubText = Color.FromArgb(139, 179, 217);
+        private readonly Color CuztomGreen = Color.FromArgb(90, 186, 71);
+        private readonly Color CuztomRed = Color.FromArgb(236, 98, 95);
+        private readonly Color CuztomYellow = Color.FromArgb(245, 197, 92);
 
         public BotController()
         {
             InitializeComponent();
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                     ControlStyles.DoubleBuffer | ControlStyles.ResizeRedraw |
-                    ControlStyles.OptimizedDoubleBuffer, true);
+                    ControlStyles.OptimizedDoubleBuffer | ControlStyles.SupportsTransparentBackColor, true);
 
             ConfigureContextMenu();
             ConfigureChildControls();
+            ModernizeStatusIndicator();
+        }
+
+        private void ModernizeStatusIndicator()
+        {
+            statusIndicator.Size = new Size(24, 24);
+            statusIndicator.Location = new Point(12, 6);
+            statusIndicator.BackColor = Color.Transparent;
         }
 
         private void ConfigureContextMenu()
         {
             var opt = (BotControlCommand[])Enum.GetValues(typeof(BotControlCommand));
 
-            // Create modern styled menu renderer
-            RCMenu.Renderer = new ModernMenuRenderer();
+            contextMenu.Renderer = new CuztomMenuRenderer();
 
             for (int i = 1; i < opt.Length; i++)
             {
                 var cmd = opt[i];
                 var item = new ToolStripMenuItem(cmd.ToString())
                 {
-                    ForeColor = Color.FromArgb(224, 224, 224),
-                    BackColor = Color.FromArgb(35, 35, 35)
+                    ForeColor = CuztomText,
+                    BackColor = CuztomDarkBackground,
+                    Font = new Font("Segoe UI", 8.5F)
                 };
                 item.Click += (_, __) => SendCommand(cmd);
 
-                // Add icon based on command
                 switch (cmd)
                 {
                     case BotControlCommand.Start:
-                        item.Text = "▶ " + item.Text;
+                        item.Text = "▶  Start";
                         break;
                     case BotControlCommand.Stop:
-                        item.Text = "■ " + item.Text;
+                        item.Text = "■  Stop";
                         break;
                     case BotControlCommand.Idle:
-                        item.Text = "⏸ " + item.Text;
+                        item.Text = "❚❚  Idle";
                         break;
                     case BotControlCommand.Resume:
-                        item.Text = "⏵ " + item.Text;
+                        item.Text = "⏵  Resume";
                         break;
                     case BotControlCommand.Restart:
-                        item.Text = "↻ " + item.Text;
+                        item.Text = "↻  Restart";
                         break;
                     case BotControlCommand.RebootAndStop:
-                        item.Text = "⚡ " + item.Text;
+                        item.Text = "⚡  Reboot & Stop";
                         break;
                     case BotControlCommand.ScreenOnAll:
-                        item.Text = "💡 " + item.Text;
+                        item.Text = "☀  Screen On";
                         break;
                     case BotControlCommand.ScreenOffAll:
-                        item.Text = "🌙 " + item.Text;
+                        item.Text = "🌙  Screen Off";
                         break;
                 }
 
-                RCMenu.Items.Add(item);
+                contextMenu.Items.Add(item);
             }
 
-            // Add separator
-            RCMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add(new ToolStripSeparator());
 
-            var remove = new ToolStripMenuItem("✕ Remove")
+            var remove = new ToolStripMenuItem("╳  Remove Bot")
             {
-                ForeColor = Color.FromArgb(237, 66, 69),
-                BackColor = Color.FromArgb(35, 35, 35)
+                ForeColor = CuztomRed,
+                BackColor = CuztomDarkBackground,
+                Font = new Font("Segoe UI", 8.5F)
             };
             remove.Click += (_, __) => TryRemove();
-            RCMenu.Items.Add(remove);
-            RCMenu.Opening += RcMenuOnOpening;
+            contextMenu.Items.Add(remove);
+            contextMenu.Opening += RcMenuOnOpening;
+
+            RCMenu = contextMenu;
         }
 
         private void ConfigureChildControls()
         {
-            var controls = Controls;
-            foreach (var c in controls.OfType<Control>())
+            foreach (var c in Controls.OfType<Control>())
+            {
+                if (c != btnActions)
+                {
+                    c.MouseEnter += BotController_MouseEnter;
+                    c.MouseLeave += BotController_MouseLeave;
+                }
+            }
+
+            foreach (var c in mainPanel.Controls.OfType<Control>())
             {
                 c.MouseEnter += BotController_MouseEnter;
                 c.MouseLeave += BotController_MouseLeave;
@@ -118,12 +148,10 @@ namespace SysBot.Pokemon.WinForms
             if (bot is null)
                 return;
 
-            foreach (var tsi in RCMenu.Items.OfType<ToolStripMenuItem>())
+            foreach (var tsi in contextMenu.Items.OfType<ToolStripMenuItem>())
             {
-                var text = tsi.Text.Replace("▶ ", "").Replace("■ ", "").Replace("⏸ ", "")
-                    .Replace("⏵ ", "").Replace("↻ ", "").Replace("⚡ ", "").Replace("✕ ", "")
-                    .Replace("💡 ", "").Replace("🌙 ", "");
-                tsi.Enabled = Enum.TryParse(text, out BotControlCommand cmd)
+                var text = tsi.Text.Substring(3).Trim();
+                tsi.Enabled = Enum.TryParse(text.Replace(" ", "").Replace("&", "And"), out BotControlCommand cmd)
                     ? cmd.IsUsable(bot.IsRunning, bot.IsPaused)
                     : !bot.IsRunning;
             }
@@ -134,12 +162,14 @@ namespace SysBot.Pokemon.WinForms
             Runner = runner;
             State = cfg;
             ReloadStatus();
-            L_Description.Text = "Initializing...";
+            lblConnectionInfo.Text = "Initializing...";
         }
 
         public void ReloadStatus()
         {
             var bot = GetBot().Bot;
+            lblBotName.Text = bot.Connection.Name;
+            lblRoutineType.Visible = false;
             L_Left.Text = $"{bot.Connection.Name}\n{State.InitialRoutine}";
         }
 
@@ -147,41 +177,71 @@ namespace SysBot.Pokemon.WinForms
         {
             ReloadStatus();
             var bot = b.Bot;
-            L_Description.Text = $"[{bot.LastTime:HH:mm:ss}] {bot.Connection.Label}: {bot.LastLogged}";
-            L_Left.Text = $"{bot.Connection.Name}\n{State.InitialRoutine}";
+            lblConnectionInfo.Text = $"[{bot.LastTime:HH:mm:ss}] {bot.Connection.Label}: {bot.LastLogged}";
+
+            var botState = ReadBotState();
+            lblStatusValue.Text = botState;
+
+            shouldPulse = false;
+
+            switch (botState)
+            {
+                case "STOPPED":
+                    targetStatusColor = Color.FromArgb(100, 100, 100);
+                    lblStatusValue.ForeColor = Color.FromArgb(100, 100, 100);
+                    break;
+                case "IDLE":
+                case "IDLING":
+                    targetStatusColor = CuztomYellow;
+                    lblStatusValue.ForeColor = CuztomYellow;
+                    shouldPulse = true;
+                    break;
+                case "ERROR":
+                    targetStatusColor = CuztomRed;
+                    lblStatusValue.ForeColor = CuztomRed;
+                    shouldPulse = true;
+                    break;
+                case "REBOOTING":
+                    targetStatusColor = CuztomAccent;
+                    lblStatusValue.ForeColor = CuztomAccent;
+                    shouldPulse = true;
+                    break;
+                default:
+                    targetStatusColor = CuztomGreen;
+                    lblStatusValue.ForeColor = CuztomGreen;
+                    shouldPulse = true;
+                    break;
+            }
 
             var lastTime = bot.LastTime;
             if (!b.IsRunning)
             {
-                targetStatusColor = Color.FromArgb(100, 100, 100); // Gray
-                progressValue = 0;
+                targetStatusColor = Color.FromArgb(100, 100, 100);
+                shouldPulse = false;
                 return;
             }
 
             if (!b.Bot.Connection.Connected)
             {
-                targetStatusColor = Color.FromArgb(135, 206, 250); // Aqua
-                progressValue = 0.3f;
+                targetStatusColor = CuztomAccent;
+                shouldPulse = true;
                 return;
             }
 
             var cfg = bot.Config;
             if (cfg.CurrentRoutineType == PokeRoutineType.Idle && cfg.NextRoutineType == PokeRoutineType.Idle)
             {
-                targetStatusColor = Color.FromArgb(254, 231, 92); // Yellow
-                progressValue = 0.5f;
+                targetStatusColor = CuztomYellow;
+                shouldPulse = true;
                 return;
             }
 
             if (LastUpdateStatus == lastTime)
                 return;
 
-            // Color decay from Green based on time
             const int threshold = 100;
-            Color good = Color.FromArgb(87, 242, 135); // Green
-            if (cfg.Connection.Protocol == SwitchProtocol.USB)
-                good = Color.FromArgb(88, 101, 242); // Blue for USB
-            Color bad = Color.FromArgb(237, 66, 69); // Red
+            Color good = cfg.Connection.Protocol == SwitchProtocol.USB ? CuztomAccent : CuztomGreen;
+            Color bad = CuztomRed;
 
             var delta = DateTime.Now - lastTime;
             var seconds = delta.Seconds;
@@ -193,13 +253,13 @@ namespace SysBot.Pokemon.WinForms
             if (seconds > threshold)
             {
                 targetStatusColor = bad;
-                progressValue = 0.1f;
+                shouldPulse = true;
             }
             else
             {
                 var factor = seconds / (double)threshold;
                 targetStatusColor = Blend(bad, good, factor * factor);
-                progressValue = (float)(1.0 - factor);
+                shouldPulse = true;
             }
         }
 
@@ -341,7 +401,6 @@ namespace SysBot.Pokemon.WinForms
                 if (bot == null)
                     return "ERROR";
 
-                // Check if bot is stopped first
                 if (!botSource.IsRunning)
                     return "STOPPED";
 
@@ -366,7 +425,6 @@ namespace SysBot.Pokemon.WinForms
                 if (cfg.CurrentRoutineType == PokeRoutineType.Idle)
                     return "IDLE";
 
-                // Only return the routine type if the bot is actually running
                 if (botSource.IsRunning && bot.Connection.Connected)
                     return cfg.CurrentRoutineType.ToString();
 
@@ -401,14 +459,31 @@ namespace SysBot.Pokemon.WinForms
 
         private void BotController_MouseEnter(object? sender, EventArgs e)
         {
-            isHovering = true;
-            animationStart = DateTime.Now;
+            if (!isHovering)
+            {
+                isHovering = true;
+                animationStart = DateTime.Now;
+            }
         }
 
         private void BotController_MouseLeave(object? sender, EventArgs e)
         {
-            isHovering = false;
-            animationStart = DateTime.Now;
+            var pos = PointToClient(Cursor.Position);
+            if (!ClientRectangle.Contains(pos))
+            {
+                isHovering = false;
+                animationStart = DateTime.Now;
+            }
+        }
+
+        private void BtnActions_MouseEnter(object? sender, EventArgs e)
+        {
+            buttonHovering = true;
+        }
+
+        private void BtnActions_MouseLeave(object? sender, EventArgs e)
+        {
+            buttonHovering = false;
         }
 
         public void ReadState()
@@ -425,7 +500,6 @@ namespace SysBot.Pokemon.WinForms
             }
         }
 
-        // Paint event handlers
         private void BotController_Paint(object sender, PaintEventArgs e)
         {
             var g = e.Graphics;
@@ -433,163 +507,181 @@ namespace SysBot.Pokemon.WinForms
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
             var rect = ClientRectangle;
-            rect.Inflate(-1, -1);
 
-            // Background with gradient
-            using (var path = new GraphicsPath())
-            {
-                GraphicsExtensions.AddRoundedRectangle(path, rect, 8);
-
-                // Base gradient
-                using (var brush = new LinearGradientBrush(rect,
-                    Color.FromArgb(35, 35, 35),
-                    Color.FromArgb(28, 28, 28),
-                    LinearGradientMode.Vertical))
-                {
-                    g.FillPath(brush, path);
-                }
-
-                // Hover glow effect
-                if (hoverProgress > 0)
-                {
-                    using (var glowBrush = new SolidBrush(Color.FromArgb((int)(20 * hoverProgress), 88, 101, 242)))
-                    {
-                        g.FillPath(glowBrush, path);
-                    }
-
-                    // Border glow
-                    using (var pen = new Pen(Color.FromArgb((int)(100 * hoverProgress), 88, 101, 242), 2))
-                    {
-                        g.DrawPath(pen, path);
-                    }
-                }
-
-                // Normal border
-                using (var pen = new Pen(Color.FromArgb(50, 50, 50), 1))
-                {
-                    g.DrawPath(pen, path);
-                }
-            }
-        }
-
-        private void StatusPanel_Paint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // Simple static glow around the status lamp
-            var glowRect = new Rectangle(5, 5, 40, 40);
-            using (var glowBrush = new SolidBrush(Color.FromArgb(20, currentStatusColor)))
-            {
-                g.FillEllipse(glowBrush, glowRect);
-            }
-        }
-
-        private void PB_Lamp_Paint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            var rect = PB_Lamp.ClientRectangle;
-
-            // Main status circle with gradient
-            using (var path = new GraphicsPath())
-            {
-                path.AddEllipse(rect);
-                using (var brush = new LinearGradientBrush(rect,
-                    ControlPaint.Light(currentStatusColor, 0.3f),
-                    currentStatusColor,
-                    LinearGradientMode.ForwardDiagonal))
-                {
-                    g.FillPath(brush, path);
-                }
-
-                // Inner highlight
-                var highlightRect = new Rectangle(2, 2, 8, 8);
-                using (var highlightBrush = new SolidBrush(Color.FromArgb(100, 255, 255, 255)))
-                {
-                    g.FillEllipse(highlightBrush, highlightRect);
-                }
-            }
-        }
-
-        private void ProgressBar_Paint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            var rect = progressBar.ClientRectangle;
-
-            // Background track
-            using (var brush = new SolidBrush(Color.FromArgb(50, 50, 50)))
+            using (var brush = new SolidBrush(CuztomBackground))
             {
                 g.FillRectangle(brush, rect);
             }
-
-            // Progress fill
-            if (progressValue > 0)
-            {
-                var fillWidth = (int)(rect.Width * progressValue);
-                var fillRect = new Rectangle(0, 0, fillWidth, rect.Height);
-
-                using (var brush = new LinearGradientBrush(fillRect,
-                    Color.FromArgb(88, 101, 242),
-                    Color.FromArgb(87, 242, 135),
-                    LinearGradientMode.Horizontal))
-                {
-                    g.FillRectangle(brush, fillRect);
-                }
-
-                // Glow effect
-                using (var glowBrush = new SolidBrush(Color.FromArgb(50, 87, 242, 135)))
-                {
-                    g.FillRectangle(glowBrush, fillRect.X, fillRect.Y - 2, fillRect.Width, fillRect.Height + 4);
-                }
-            }
         }
 
-        private void ActionButton_Paint(object sender, PaintEventArgs e)
+        private void MainPanel_Paint(object sender, PaintEventArgs e)
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            var btn = sender as System.Windows.Forms.Button;
-            var rect = btn.ClientRectangle;
-
-            // Draw rounded button with glow
+            var rect = mainPanel.ClientRectangle;
             using (var path = new GraphicsPath())
             {
                 GraphicsExtensions.AddRoundedRectangle(path, rect, 4);
 
-                // Glow effect
-                if (btn.ClientRectangle.Contains(btn.PointToClient(MousePosition)))
+                using (var brush = new SolidBrush(CuztomDarkBackground))
                 {
-                    for (int i = 3; i > 0; i--)
+                    g.FillPath(brush, path);
+                }
+
+                if (hoverProgress > 0)
+                {
+                    using (var pen = new Pen(Color.FromArgb((int)(80 * hoverProgress), CuztomAccent), 2))
                     {
-                        var glowRect = new Rectangle(-i, -i, rect.Width + i * 2, rect.Height + i * 2);
-                        using (var glowPath = new GraphicsPath())
-                        {
-                            GraphicsExtensions.AddRoundedRectangle(glowPath, glowRect, 4);
-                            using (var glowBrush = new SolidBrush(Color.FromArgb(20 / i, btn.BackColor)))
-                            {
-                                g.FillPath(glowBrush, glowPath);
-                            }
-                        }
+                        g.DrawPath(pen, path);
+                    }
+                }
+                else
+                {
+                    using (var pen = new Pen(Color.FromArgb(12, 20, 28), 1))
+                    {
+                        g.DrawPath(pen, path);
                     }
                 }
             }
         }
 
-        private void ActionButton_Click(object sender, EventArgs e)
+        private void BottomPanel_Paint(object sender, PaintEventArgs e)
         {
-            RCMenu.Show(actionButton, new Point(0, actionButton.Height));
+            var g = e.Graphics;
+
+            using (var pen = new Pen(Color.FromArgb(12, 20, 28), 1))
+            {
+                g.DrawLine(pen, 0, 0, bottomPanel.Width, 0);
+            }
+        }
+
+        private void StatusIndicator_Paint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.CompositingQuality = CompositingQuality.HighQuality;
+
+            var control = sender as PictureBox;
+            var fullRect = control.ClientRectangle;
+
+            var centerX = fullRect.Width / 2f;
+            var centerY = fullRect.Height / 2f;
+            var coreSize = 10f;
+            var coreRect = new RectangleF(centerX - coreSize / 2, centerY - coreSize / 2, coreSize, coreSize);
+
+            if (shouldPulse && pulsePhase > 0)
+            {
+                var basePulse = (float)((Math.Sin(pulsePhase) + 1) / 2);
+                var pulseScale = 0.7f + (basePulse * 0.4f);
+
+                for (int ring = 3; ring >= 1; ring--)
+                {
+                    var ringSize = coreSize + (ring * 4f * pulseScale);
+                    var ringAlpha = (int)(40 + (30 * basePulse)) / ring;
+
+                    if (ringAlpha > 8)
+                    {
+                        var ringRect = new RectangleF(
+                            centerX - ringSize / 2,
+                            centerY - ringSize / 2,
+                            ringSize,
+                            ringSize
+                        );
+
+                        using (var glowPath = new GraphicsPath())
+                        {
+                            glowPath.AddEllipse(ringRect);
+                            using (var glowBrush = new PathGradientBrush(glowPath))
+                            {
+                                glowBrush.CenterColor = Color.FromArgb(ringAlpha, currentStatusColor);
+                                glowBrush.SurroundColors = new[] { Color.FromArgb(0, currentStatusColor) };
+                                glowBrush.CenterPoint = new PointF(centerX, centerY);
+                                g.FillEllipse(glowBrush, ringRect);
+                            }
+                        }
+                    }
+                }
+
+                var innerGlowSize = coreSize + (3f * pulseScale);
+                var innerGlowRect = new RectangleF(
+                    centerX - innerGlowSize / 2,
+                    centerY - innerGlowSize / 2,
+                    innerGlowSize,
+                    innerGlowSize
+                );
+                var innerAlpha = (int)(70 + (50 * basePulse));
+
+                using (var innerGlowPath = new GraphicsPath())
+                {
+                    innerGlowPath.AddEllipse(innerGlowRect);
+                    using (var innerGlowBrush = new PathGradientBrush(innerGlowPath))
+                    {
+                        innerGlowBrush.CenterColor = Color.FromArgb(innerAlpha, currentStatusColor);
+                        innerGlowBrush.SurroundColors = new[] { Color.FromArgb(0, currentStatusColor) };
+                        innerGlowBrush.CenterPoint = new PointF(centerX, centerY);
+                        g.FillEllipse(innerGlowBrush, innerGlowRect);
+                    }
+                }
+            }
+
+            using (var corePath = new GraphicsPath())
+            {
+                corePath.AddEllipse(coreRect);
+
+                using (var coreGradient = new LinearGradientBrush(
+                    coreRect,
+                    Color.FromArgb(255, Math.Min(255, currentStatusColor.R + 40), Math.Min(255, currentStatusColor.G + 40), Math.Min(255, currentStatusColor.B + 40)),
+                    currentStatusColor,
+                    LinearGradientMode.Vertical))
+                {
+                    g.FillEllipse(coreGradient, coreRect);
+                }
+
+                using (var borderPen = new Pen(Color.FromArgb(180, 255, 255, 255), 0.5f))
+                {
+                    g.DrawEllipse(borderPen, coreRect);
+                }
+            }
+
+            var highlightSize = 3f;
+            var highlightRect = new RectangleF(
+                centerX - coreSize / 3,
+                centerY - coreSize / 3,
+                highlightSize,
+                highlightSize
+            );
+
+            using (var highlightBrush = new SolidBrush(Color.FromArgb(160, 255, 255, 255)))
+            {
+                g.FillEllipse(highlightBrush, highlightRect);
+            }
+        }
+
+        private void BtnActions_Paint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var btn = sender as Button;
+            var rect = btn.ClientRectangle;
+
+            using (var path = new GraphicsPath())
+            {
+                GraphicsExtensions.AddRoundedRectangle(path, rect, 3);
+                btn.Region = new Region(path);
+            }
+        }
+
+        private void BtnActions_Click(object sender, EventArgs e)
+        {
+            contextMenu.Show(btnActions, new Point(0, btnActions.Height + 1));
         }
 
         private void AnimationTimer_Tick(object sender, EventArgs e)
         {
-            // Update hover animation
             var elapsed = (DateTime.Now - animationStart).TotalMilliseconds;
-            var duration = 150.0;
+            var duration = 200.0;
 
             if (isHovering)
             {
@@ -600,55 +692,76 @@ namespace SysBot.Pokemon.WinForms
                 hoverProgress = Math.Max(0.0f, 1.0f - (float)(elapsed / duration));
             }
 
-            // Smoothly transition status color
             if (currentStatusColor != targetStatusColor)
             {
-                currentStatusColor = Blend(targetStatusColor, currentStatusColor, 0.1);
-                PB_Lamp.BackColor = currentStatusColor;
+                currentStatusColor = Blend(targetStatusColor, currentStatusColor, 0.15);
             }
 
-            // Redraw if animating
+            if (shouldPulse)
+            {
+                pulsePhase += 0.08f;
+                if (pulsePhase > Math.PI * 2)
+                    pulsePhase -= (float)(Math.PI * 2);
+
+                glowIntensity = (float)((Math.Sin(pulsePhase) + 1) / 2);
+            }
+            else
+            {
+                pulsePhase = 0f;
+                glowIntensity = 0f;
+            }
+
             if (hoverProgress > 0 && hoverProgress < 1)
             {
-                Invalidate();
+                mainPanel.Invalidate();
             }
 
-            statusPanel.Invalidate();
-            PB_Lamp.Invalidate();
-            progressBar.Invalidate();
+            if (buttonHovering)
+            {
+                btnActions.BackColor = Color.FromArgb(122, 207, 255);
+            }
+            else
+            {
+                btnActions.BackColor = CuztomAccent;
+            }
+
+            if (statusIndicator != null)
+            {
+                statusIndicator.Invalidate();
+            }
         }
 
-        // Custom menu renderer for dark theme
-        private class ModernMenuRenderer : ToolStripProfessionalRenderer
+        private class CuztomMenuRenderer : ToolStripProfessionalRenderer
         {
-            public ModernMenuRenderer() : base(new ModernColorTable()) { }
+            public CuztomMenuRenderer() : base(new CuztomColorTable()) { }
 
             protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
             {
                 var rc = new Rectangle(Point.Empty, e.Item.Size);
-                var c = e.Item.Selected ? Color.FromArgb(50, 50, 50) : Color.FromArgb(35, 35, 35);
+                var c = e.Item.Selected ? Color.FromArgb(46, 61, 83) : Color.FromArgb(27, 40, 56);
                 using (var brush = new SolidBrush(c))
                     e.Graphics.FillRectangle(brush, rc);
             }
 
             protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
             {
-                e.TextColor = e.Item.Enabled ? Color.FromArgb(224, 224, 224) : Color.FromArgb(100, 100, 100);
+                if (!e.Item.Enabled)
+                    e.TextColor = Color.FromArgb(100, 100, 100);
                 base.OnRenderItemText(e);
             }
         }
 
-        private class ModernColorTable : ProfessionalColorTable
+        private class CuztomColorTable : ProfessionalColorTable
         {
-            public override Color MenuItemSelected => Color.FromArgb(50, 50, 50);
-            public override Color MenuItemBorder => Color.FromArgb(88, 101, 242);
-            public override Color MenuBorder => Color.FromArgb(50, 50, 50);
-            public override Color ToolStripDropDownBackground => Color.FromArgb(35, 35, 35);
-            public override Color ImageMarginGradientBegin => Color.FromArgb(35, 35, 35);
-            public override Color ImageMarginGradientMiddle => Color.FromArgb(35, 35, 35);
-            public override Color ImageMarginGradientEnd => Color.FromArgb(35, 35, 35);
-            public override Color SeparatorDark => Color.FromArgb(50, 50, 50);
-            public override Color SeparatorLight => Color.FromArgb(60, 60, 60);
+            public override Color MenuItemSelected => Color.FromArgb(46, 61, 83);
+            public override Color MenuItemBorder => Color.FromArgb(102, 192, 244);
+            public override Color MenuBorder => Color.FromArgb(12, 20, 28);
+            public override Color ToolStripDropDownBackground => Color.FromArgb(27, 40, 56);
+            public override Color ImageMarginGradientBegin => Color.FromArgb(27, 40, 56);
+            public override Color ImageMarginGradientMiddle => Color.FromArgb(27, 40, 56);
+            public override Color ImageMarginGradientEnd => Color.FromArgb(27, 40, 56);
+            public override Color SeparatorDark => Color.FromArgb(12, 20, 28);
+            public override Color SeparatorLight => Color.FromArgb(46, 61, 83);
         }
     }
 

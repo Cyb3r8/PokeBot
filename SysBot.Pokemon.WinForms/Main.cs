@@ -13,7 +13,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -21,7 +20,7 @@ namespace SysBot.Pokemon.WinForms
 {
     public sealed partial class Main : Form
     {
-        private readonly List<PokeBotState> Bots = new();
+        private readonly List<PokeBotState> Bots = [];
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal ProgramConfig Config { get; set; } = null!;
@@ -45,6 +44,12 @@ namespace SysBot.Pokemon.WinForms
         private LinearGradientBrush? _logoBrush;
         private Image? _currentModeImage = null;
 
+        private readonly Color CuztomBackground = Color.FromArgb(27, 40, 56);
+        private readonly Color CuztomDarkBackground = Color.FromArgb(22, 32, 45);
+        private readonly Color CuztomAccent = Color.FromArgb(102, 192, 244);
+        private readonly Color CuztomText = Color.FromArgb(239, 239, 239);
+        private readonly Color CuztomSubText = Color.FromArgb(139, 179, 217);
+
         public Main()
         {
             InitializeComponent();
@@ -54,7 +59,7 @@ namespace SysBot.Pokemon.WinForms
             Tab_Bots = new TabPage();
             Tab_Hub = new TabPage();
             Tab_Logs = new TabPage();
-            TC_Main.TabPages.AddRange(new[] { Tab_Bots, Tab_Hub, Tab_Logs });
+            TC_Main.TabPages.AddRange([Tab_Bots, Tab_Hub, Tab_Logs]);
             TC_Main.SendToBack();
 
             _searchManager = new SearchManager(RTB_Logs, searchStatusLabel);
@@ -114,6 +119,7 @@ namespace SysBot.Pokemon.WinForms
             InitUtil.InitializeStubs(Config.Mode);
             _isFormLoading = false;
             UpdateBackgroundImage(Config.Mode);
+            UpdateStatusIndicatorColor();
             LogUtil.LogInfo($"Bot initialization complete", "System");
             _ = Task.Run(() =>
             {
@@ -211,11 +217,41 @@ namespace SysBot.Pokemon.WinForms
                             ? $"{botTitle} - No bots configured"
                             : $"{botTitle} - {runningBots}/{totalBots} bots running";
                     }
+
+                    UpdateControlButtonStates();
                 }
                 catch
                 {
                 }
                 await Task.Delay(2_000).ConfigureAwait(false);
+            }
+        }
+
+        private void UpdateControlButtonStates()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => UpdateControlButtonStates());
+                return;
+            }
+
+            var runningBots = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
+            var totalBots = FLP_Bots.Controls.OfType<BotController>().Count();
+            var anyRunning = runningBots > 0;
+
+            if (btnStart?.Tag is EnhancedButtonAnimationState startState)
+            {
+                startState.IsActive = !anyRunning && totalBots > 0;
+            }
+
+            if (btnStop?.Tag is EnhancedButtonAnimationState stopState)
+            {
+                stopState.IsActive = anyRunning;
+            }
+
+            if (btnReboot?.Tag is EnhancedButtonAnimationState rebootState)
+            {
+                rebootState.IsActive = anyRunning;
             }
         }
 
@@ -242,7 +278,7 @@ namespace SysBot.Pokemon.WinForms
             CB_Protocol.DataSource = listP;
             CB_Protocol.SelectedIndex = (int)SwitchProtocol.WiFi;
 
-            var gameModes = Enum.GetValues(typeof(ProgramMode))
+            var gameModes = Enum.GetValues<ProgramMode>()
                 .Cast<ProgramMode>()
                 .Where(m => m != ProgramMode.None)
                 .Select(mode => new { Text = mode.ToString(), Value = (int)mode })
@@ -261,7 +297,7 @@ namespace SysBot.Pokemon.WinForms
             {
                 throw new InvalidOperationException("Config has not been initialized because a valid license was not entered.");
             }
-            Config.Bots = Bots.ToArray();
+            Config.Bots = [.. Bots];
             return Config;
         }
 
@@ -354,7 +390,28 @@ namespace SysBot.Pokemon.WinForms
             LogUtil.LogInfo("Starting all bots...", "Form");
             RunningEnvironment.InitializeStart();
             SendAll(BotControlCommand.Start);
-            btnNavLogs.PerformClick();
+
+            SetButtonActiveState(btnStart, true);
+            SetButtonActiveState(btnStop, false);
+            SetButtonActiveState(btnReboot, false);
+
+            foreach (Button navBtn in navButtonsPanel.Controls.OfType<Button>())
+            {
+                if (navBtn.Tag is NavButtonState state)
+                {
+                    state.IsSelected = false;
+                    navBtn.Invalidate();
+                }
+            }
+
+            if (btnNavLogs.Tag is NavButtonState logsState)
+            {
+                logsState.IsSelected = true;
+                btnNavLogs.Invalidate();
+            }
+
+            TransitionPanels(2);
+            titleLabel.Text = "System Logs";
 
             if (Bots.Count == 0)
                 WinFormsUtil.Alert("No bots configured, but all supporting services have been started.");
@@ -363,6 +420,8 @@ namespace SysBot.Pokemon.WinForms
         private void B_RebootStop_Click(object sender, EventArgs e)
         {
             B_Stop_Click(sender, e);
+            SetButtonActiveState(btnReboot, true);
+
             Task.Run(async () =>
             {
                 await Task.Delay(3_500).ConfigureAwait(false);
@@ -372,7 +431,31 @@ namespace SysBot.Pokemon.WinForms
                 SendAll(BotControlCommand.RebootAndStop);
                 await Task.Delay(5_000).ConfigureAwait(false);
                 SendAll(BotControlCommand.Start);
-                BeginInvoke((MethodInvoker)(() => btnNavLogs.PerformClick()));
+
+                BeginInvoke((MethodInvoker)(() =>
+                {
+                    SetButtonActiveState(btnReboot, false);
+                    SetButtonActiveState(btnStop, true);
+
+                    foreach (Button navBtn in navButtonsPanel.Controls.OfType<Button>())
+                    {
+                        if (navBtn.Tag is NavButtonState state)
+                        {
+                            state.IsSelected = false;
+                            navBtn.Invalidate();
+                        }
+                    }
+
+                    if (btnNavLogs.Tag is NavButtonState logsState)
+                    {
+                        logsState.IsSelected = true;
+                        btnNavLogs.Invalidate();
+                    }
+
+                    TransitionPanels(2);
+                    titleLabel.Text = "System Logs";
+                }));
+
                 if (Bots.Count == 0)
                     WinFormsUtil.Alert("No bots configured, but all supporting services have been issued the reboot command.");
             });
@@ -404,12 +487,79 @@ namespace SysBot.Pokemon.WinForms
             }
         }
 
+        private void SetButtonActiveState(Button button, bool isActive)
+        {
+            if (button?.Tag is EnhancedButtonAnimationState state)
+            {
+                state.IsActive = isActive;
+                button.Invalidate();
+            }
+        }
+
         private void SendAll(BotControlCommand cmd)
         {
             foreach (var c in FLP_Bots.Controls.OfType<BotController>())
                 c.SendCommand(cmd, false);
 
             LogUtil.LogText($"All bots have been issued a command to {cmd}.");
+        }
+
+        private void BtnExit_Click(object sender, EventArgs e)
+        {
+            var result = MessageBox.Show(
+                "Are you sure you want to exit PokéBot?",
+                "Exit Confirmation",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (result == DialogResult.Yes)
+            {
+                _isReallyClosing = true;
+                Close();
+            }
+        }
+
+        private void UpdateAddButtonPosition()
+        {
+            if (B_New != null && CB_Routine != null)
+            {
+                B_New.Location = new Point(CB_Routine.Right + 10, 16);
+            }
+        }
+
+        private void AddBotPanel_Layout(object sender, EventArgs e)
+        {
+            UpdateAddButtonPosition();
+        }
+
+        private void CB_Routine_SizeChanged(object sender, EventArgs e)
+        {
+            UpdateAddButtonPosition();
+        }
+
+        private void CB_Routine_LocationChanged(object sender, EventArgs e)
+        {
+            UpdateAddButtonPosition();
+        }
+
+        private void FLP_Bots_Scroll(object sender, ScrollEventArgs e)
+        {
+            FLP_Bots.Invalidate();
+        }
+
+        private void FLP_Bots_ControlAdded(object sender, ControlEventArgs e)
+        {
+            FLP_Bots.Invalidate();
+        }
+
+        private void FLP_Bots_ControlRemoved(object sender, ControlEventArgs e)
+        {
+            FLP_Bots.Invalidate();
+        }
+
+        private void BtnClearLogs_Click(object sender, EventArgs e)
+        {
+            RTB_Logs.Clear();
+            _searchManager.ClearSearch();
         }
 
         private void B_Stop_Click(object sender, EventArgs e)
@@ -429,16 +579,21 @@ namespace SysBot.Pokemon.WinForms
                 {
                     WinFormsUtil.Alert("Commanding all bots to Idle.", "Press Stop (without a modifier key) to hard-stop and unlock control, or press Stop with the modifier key again to resume.");
                     cmd = BotControlCommand.Idle;
+                    SetButtonActiveState(btnStop, true);
                 }
                 else
                 {
                     WinFormsUtil.Alert("Commanding all bots to resume their original task.", "Press Stop (without a modifier key) to hard-stop and unlock control.");
                     cmd = BotControlCommand.Resume;
+                    SetButtonActiveState(btnStop, false);
                 }
             }
             else
             {
                 env.StopAll();
+                SetButtonActiveState(btnStart, false);
+                SetButtonActiveState(btnStop, false);
+                SetButtonActiveState(btnReboot, false);
             }
             SendAll(cmd);
         }
@@ -498,7 +653,7 @@ namespace SysBot.Pokemon.WinForms
                 availableWidth -= scrollBarWidth;
             }
 
-            int botWidth = Math.Max(400, availableWidth - 20);
+            int botWidth = Math.Max(400, availableWidth - 10);
 
             var row = new BotController { Width = botWidth };
             row.Initialize(RunningEnvironment, cfg);
@@ -545,7 +700,7 @@ namespace SysBot.Pokemon.WinForms
                 availableWidth -= scrollBarWidth;
             }
 
-            int botWidth = Math.Max(400, availableWidth - 20);
+            int botWidth = Math.Max(400, availableWidth - 10);
 
             foreach (var c in FLP_Bots.Controls.OfType<BotController>())
             {
@@ -589,17 +744,22 @@ namespace SysBot.Pokemon.WinForms
             if (pulsePhase > Math.PI * 2)
                 pulsePhase -= Math.PI * 2;
 
+            UpdateStatusIndicatorColor();
+        }
+
+        private void UpdateStatusIndicatorColor()
+        {
+            if (statusIndicator == null) return;
+
             Color newColor;
 
             if (hasUpdate)
             {
                 double pulse = (Math.Sin(pulsePhase) + 1) / 2;
-
                 int minAlpha = 150;
                 int maxAlpha = 255;
                 int alpha = (int)(minAlpha + (maxAlpha - minAlpha) * pulse);
-
-                newColor = Color.FromArgb(alpha, 87, 242, 135);
+                newColor = Color.FromArgb(alpha, 102, 192, 244);
             }
             else
             {
@@ -714,22 +874,19 @@ namespace SysBot.Pokemon.WinForms
         #endregion
     }
 
-    public sealed class SearchManager
+    public sealed class SearchManager(RichTextBox textBox, Label statusLabel)
     {
-        private readonly RichTextBox _textBox;
-        private readonly Label _statusLabel;
-        private readonly List<SearchMatch> _matches = new();
+        private readonly RichTextBox _textBox = textBox ?? throw new ArgumentNullException(nameof(textBox));
+        private readonly Label _statusLabel = statusLabel ?? throw new ArgumentNullException(nameof(statusLabel));
+        private readonly List<SearchMatch> _matches = [];
         private int _currentIndex = -1;
         private string _lastSearchText = string.Empty;
         private bool _caseSensitive = false;
         private bool _useRegex = false;
         private bool _wholeWord = false;
 
-        public SearchManager(RichTextBox textBox, Label statusLabel)
-        {
-            _textBox = textBox ?? throw new ArgumentNullException(nameof(textBox));
-            _statusLabel = statusLabel ?? throw new ArgumentNullException(nameof(statusLabel));
-        }
+        private readonly Color HighlightColor = Color.FromArgb(102, 192, 244);
+        private readonly Color CurrentHighlightColor = Color.FromArgb(57, 255, 221);
 
         public void UpdateSearch(string searchText)
         {
@@ -866,7 +1023,7 @@ namespace SysBot.Pokemon.WinForms
             foreach (var match in _matches)
             {
                 _textBox.Select(match.Start, match.Length);
-                _textBox.SelectionBackColor = Color.FromArgb(88, 101, 242);
+                _textBox.SelectionBackColor = HighlightColor;
             }
         }
 
@@ -879,7 +1036,7 @@ namespace SysBot.Pokemon.WinForms
 
             var currentMatch = _matches[_currentIndex];
             _textBox.Select(currentMatch.Start, currentMatch.Length);
-            _textBox.SelectionBackColor = Color.FromArgb(87, 242, 135);
+            _textBox.SelectionBackColor = CurrentHighlightColor;
             _textBox.ScrollToCaret();
 
             _statusLabel.Text = $"{_currentIndex + 1} of {_matches.Count}";
@@ -891,7 +1048,7 @@ namespace SysBot.Pokemon.WinForms
             {
                 var match = _matches[_currentIndex];
                 _textBox.Select(match.Start, match.Length);
-                _textBox.SelectionBackColor = Color.FromArgb(88, 101, 242);
+                _textBox.SelectionBackColor = HighlightColor;
             }
         }
 

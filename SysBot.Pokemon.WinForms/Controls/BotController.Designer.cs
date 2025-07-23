@@ -27,129 +27,236 @@ namespace SysBot.Pokemon.WinForms
         private void InitializeComponent()
         {
             this.components = new System.ComponentModel.Container();
-            this.L_Description = new System.Windows.Forms.Label();
-            this.L_Left = new System.Windows.Forms.Label();
-            this.PB_Lamp = new System.Windows.Forms.PictureBox();
-            this.RCMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.mainPanel = new System.Windows.Forms.Panel();
+            this.topPanel = new System.Windows.Forms.Panel();
+            this.statusIndicator = new System.Windows.Forms.PictureBox();
+            this.lblBotName = new System.Windows.Forms.Label();
+            this.lblRoutineType = new System.Windows.Forms.Label();
+            this.lblConnectionInfo = new System.Windows.Forms.Label();
+            this.bottomPanel = new System.Windows.Forms.Panel();
             this.statusPanel = new System.Windows.Forms.Panel();
-            this.progressBar = new System.Windows.Forms.Panel();
-            this.actionButton = new System.Windows.Forms.Button();
+            this.lblStatus = new System.Windows.Forms.Label();
+            this.lblStatusValue = new System.Windows.Forms.Label();
+            this.actionPanel = new System.Windows.Forms.Panel();
+            this.btnActions = new System.Windows.Forms.Button();
+            this.contextMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.animationTimer = new System.Windows.Forms.Timer(this.components);
-            ((System.ComponentModel.ISupportInitialize)(this.PB_Lamp)).BeginInit();
+            this.mainPanel.SuspendLayout();
+            this.topPanel.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.statusIndicator)).BeginInit();
+            this.bottomPanel.SuspendLayout();
             this.statusPanel.SuspendLayout();
+            this.actionPanel.SuspendLayout();
             this.SuspendLayout();
 
             // BotController
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.BackColor = System.Drawing.Color.FromArgb(35, 35, 35);
-            this.ContextMenuStrip = this.RCMenu;
-            this.Controls.Add(this.actionButton);
-            this.Controls.Add(this.progressBar);
-            this.Controls.Add(this.statusPanel);
-            this.Controls.Add(this.L_Description);
-            this.Controls.Add(this.L_Left);
+            this.BackColor = System.Drawing.Color.FromArgb(27, 40, 56);
+            this.Controls.Add(this.mainPanel);
             this.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.Margin = new System.Windows.Forms.Padding(0, 0, 0, 10);
+            this.Margin = new System.Windows.Forms.Padding(0, 0, 0, 5);
             this.Name = "BotController";
-            this.Size = new System.Drawing.Size(900, 80);
-            this.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.Size = new System.Drawing.Size(900, 70);
             this.Paint += new System.Windows.Forms.PaintEventHandler(this.BotController_Paint);
             this.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
             this.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
 
-            // Status Panel
-            this.statusPanel.BackColor = System.Drawing.Color.Transparent;
-            this.statusPanel.Controls.Add(this.PB_Lamp);
-            this.statusPanel.Location = new System.Drawing.Point(15, 15);
-            this.statusPanel.Name = "statusPanel";
-            this.statusPanel.Size = new System.Drawing.Size(50, 50);
-            this.statusPanel.TabIndex = 5;
-            this.statusPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.StatusPanel_Paint);
-
-            // Status Lamp
-            this.PB_Lamp.BackColor = System.Drawing.Color.FromArgb(87, 242, 135);
-            this.PB_Lamp.Location = new System.Drawing.Point(15, 15);
-            this.PB_Lamp.Name = "PB_Lamp";
-            this.PB_Lamp.Size = new System.Drawing.Size(20, 20);
-            this.PB_Lamp.TabIndex = 4;
-            this.PB_Lamp.TabStop = false;
-            this.PB_Lamp.Paint += new System.Windows.Forms.PaintEventHandler(this.PB_Lamp_Paint);
-
-            // Left Label (IP/Routine)
-            this.L_Left.AutoSize = false;
-            this.L_Left.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
-            this.L_Left.ForeColor = System.Drawing.Color.FromArgb(224, 224, 224);
-            this.L_Left.Location = new System.Drawing.Point(80, 15);
-            this.L_Left.Name = "L_Left";
-            this.L_Left.Size = new System.Drawing.Size(200, 50);
-            this.L_Left.TabIndex = 3;
-            this.L_Left.Text = "192.168.123.123\r\nFlexTrade";
-            this.L_Left.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-
-            // Description Label
-            this.L_Description.Anchor = System.Windows.Forms.AnchorStyles.Top |
-                                        System.Windows.Forms.AnchorStyles.Left |
-                                        System.Windows.Forms.AnchorStyles.Right;
-            this.L_Description.AutoEllipsis = true;
-            this.L_Description.Font = new System.Drawing.Font("Segoe UI", 9F);
-            this.L_Description.ForeColor = System.Drawing.Color.FromArgb(176, 176, 176);
-            this.L_Description.Location = new System.Drawing.Point(290, 25);
-            this.L_Description.Name = "L_Description";
-            this.L_Description.Size = new System.Drawing.Size(450, 30);
-            this.L_Description.TabIndex = 2;
-            this.L_Description.Text = "Waiting for command...";
-            this.L_Description.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-
-            // Progress Bar
-            this.progressBar.Anchor = System.Windows.Forms.AnchorStyles.Bottom |
+            // Main Panel
+            this.mainPanel.Anchor = System.Windows.Forms.AnchorStyles.Top |
+                                     System.Windows.Forms.AnchorStyles.Bottom |
                                      System.Windows.Forms.AnchorStyles.Left |
                                      System.Windows.Forms.AnchorStyles.Right;
-            this.progressBar.BackColor = System.Drawing.Color.FromArgb(50, 50, 50);
-            this.progressBar.Location = new System.Drawing.Point(80, 65);
-            this.progressBar.Name = "progressBar";
-            this.progressBar.Size = new System.Drawing.Size(660, 4);
-            this.progressBar.TabIndex = 6;
-            this.progressBar.Paint += new System.Windows.Forms.PaintEventHandler(this.ProgressBar_Paint);
+            this.mainPanel.BackColor = System.Drawing.Color.FromArgb(22, 32, 45);
+            this.mainPanel.Controls.Add(this.topPanel);
+            this.mainPanel.Controls.Add(this.bottomPanel);
+            this.mainPanel.Location = new System.Drawing.Point(3, 3);
+            this.mainPanel.Name = "mainPanel";
+            this.mainPanel.Size = new System.Drawing.Size(894, 64);
+            this.mainPanel.TabIndex = 0;
+            this.mainPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.MainPanel_Paint);
+            this.mainPanel.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.mainPanel.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
 
-            // Action Button
-            this.actionButton.Anchor = System.Windows.Forms.AnchorStyles.Top |
+            // Top Panel
+            this.topPanel.Anchor = System.Windows.Forms.AnchorStyles.Top |
+                                   System.Windows.Forms.AnchorStyles.Left |
+                                   System.Windows.Forms.AnchorStyles.Right;
+            this.topPanel.BackColor = System.Drawing.Color.Transparent;
+            this.topPanel.Controls.Add(this.statusIndicator);
+            this.topPanel.Controls.Add(this.lblBotName);
+            this.topPanel.Controls.Add(this.lblRoutineType);
+            this.topPanel.Controls.Add(this.lblConnectionInfo);
+            this.topPanel.Location = new System.Drawing.Point(0, 0);
+            this.topPanel.Name = "topPanel";
+            this.topPanel.Size = new System.Drawing.Size(894, 35);
+            this.topPanel.TabIndex = 0;
+            this.topPanel.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.topPanel.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
+
+            // Status Indicator
+            this.statusIndicator.BackColor = System.Drawing.Color.FromArgb(90, 186, 71);
+            this.statusIndicator.Location = new System.Drawing.Point(15, 13);
+            this.statusIndicator.Name = "statusIndicator";
+            this.statusIndicator.Size = new System.Drawing.Size(8, 8);
+            this.statusIndicator.TabIndex = 0;
+            this.statusIndicator.TabStop = false;
+            this.statusIndicator.Paint += new System.Windows.Forms.PaintEventHandler(this.StatusIndicator_Paint);
+
+            // Bot Name Label
+            this.lblBotName.AutoSize = false;
+            this.lblBotName.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+            this.lblBotName.ForeColor = System.Drawing.Color.FromArgb(239, 239, 239);
+            this.lblBotName.Location = new System.Drawing.Point(35, 5);
+            this.lblBotName.Name = "lblBotName";
+            this.lblBotName.Size = new System.Drawing.Size(180, 18);
+            this.lblBotName.TabIndex = 1;
+            this.lblBotName.Text = "192.168.1.100";
+            this.lblBotName.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblBotName.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.lblBotName.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
+
+            // Routine Type Label
+            this.lblRoutineType.AutoSize = false;
+            this.lblRoutineType.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.lblRoutineType.ForeColor = System.Drawing.Color.FromArgb(139, 179, 217);
+            this.lblRoutineType.Location = new System.Drawing.Point(35, 20);
+            this.lblRoutineType.Name = "lblRoutineType";
+            this.lblRoutineType.Size = new System.Drawing.Size(180, 12);
+            this.lblRoutineType.TabIndex = 2;
+            this.lblRoutineType.Text = "FlexTrade";
+            this.lblRoutineType.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblRoutineType.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.lblRoutineType.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
+
+            // Connection Info Label
+            this.lblConnectionInfo.Anchor = System.Windows.Forms.AnchorStyles.Top |
+                                           System.Windows.Forms.AnchorStyles.Left |
+                                           System.Windows.Forms.AnchorStyles.Right;
+            this.lblConnectionInfo.AutoEllipsis = true;
+            this.lblConnectionInfo.Font = new System.Drawing.Font("Segoe UI", 8F);
+            this.lblConnectionInfo.ForeColor = System.Drawing.Color.FromArgb(176, 176, 176);
+            this.lblConnectionInfo.Location = new System.Drawing.Point(220, 10);
+            this.lblConnectionInfo.Name = "lblConnectionInfo";
+            this.lblConnectionInfo.Size = new System.Drawing.Size(450, 15);
+            this.lblConnectionInfo.TabIndex = 3;
+            this.lblConnectionInfo.Text = "Waiting for command...";
+            this.lblConnectionInfo.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblConnectionInfo.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.lblConnectionInfo.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
+
+            // Bottom Panel
+            this.bottomPanel.Anchor = System.Windows.Forms.AnchorStyles.Bottom |
+                                      System.Windows.Forms.AnchorStyles.Left |
                                       System.Windows.Forms.AnchorStyles.Right;
-            this.actionButton.BackColor = System.Drawing.Color.FromArgb(88, 101, 242);
-            this.actionButton.FlatAppearance.BorderSize = 0;
-            this.actionButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.actionButton.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.actionButton.ForeColor = System.Drawing.Color.White;
-            this.actionButton.Location = new System.Drawing.Point(760, 25);
-            this.actionButton.Name = "actionButton";
-            this.actionButton.Size = new System.Drawing.Size(100, 30);
-            this.actionButton.TabIndex = 7;
-            this.actionButton.Text = "ACTIONS";
-            this.actionButton.UseVisualStyleBackColor = false;
-            this.actionButton.Click += new System.EventHandler(this.ActionButton_Click);
-            this.actionButton.Paint += new System.Windows.Forms.PaintEventHandler(this.ActionButton_Paint);
+            this.bottomPanel.BackColor = System.Drawing.Color.FromArgb(16, 24, 34);
+            this.bottomPanel.Controls.Add(this.statusPanel);
+            this.bottomPanel.Controls.Add(this.actionPanel);
+            this.bottomPanel.Location = new System.Drawing.Point(0, 35);
+            this.bottomPanel.Name = "bottomPanel";
+            this.bottomPanel.Size = new System.Drawing.Size(894, 29);
+            this.bottomPanel.TabIndex = 1;
+            this.bottomPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.BottomPanel_Paint);
+            this.bottomPanel.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.bottomPanel.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
+
+            // Status Panel
+            this.statusPanel.BackColor = System.Drawing.Color.Transparent;
+            this.statusPanel.Controls.Add(this.lblStatus);
+            this.statusPanel.Controls.Add(this.lblStatusValue);
+            this.statusPanel.Location = new System.Drawing.Point(15, 0);
+            this.statusPanel.Name = "statusPanel";
+            this.statusPanel.Size = new System.Drawing.Size(250, 29);
+            this.statusPanel.TabIndex = 0;
+            this.statusPanel.MouseEnter += new System.EventHandler(this.BotController_MouseEnter);
+            this.statusPanel.MouseLeave += new System.EventHandler(this.BotController_MouseLeave);
+
+            // Status Label
+            this.lblStatus.AutoSize = false;
+            this.lblStatus.Font = new System.Drawing.Font("Segoe UI", 7F);
+            this.lblStatus.ForeColor = System.Drawing.Color.FromArgb(139, 179, 217);
+            this.lblStatus.Location = new System.Drawing.Point(0, 8);
+            this.lblStatus.Name = "lblStatus";
+            this.lblStatus.Size = new System.Drawing.Size(45, 12);
+            this.lblStatus.TabIndex = 0;
+            this.lblStatus.Text = "STATUS";
+            this.lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
+            // Status Value Label
+            this.lblStatusValue.AutoSize = false;
+            this.lblStatusValue.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Bold);
+            this.lblStatusValue.ForeColor = System.Drawing.Color.FromArgb(90, 186, 71);
+            this.lblStatusValue.Location = new System.Drawing.Point(50, 7);
+            this.lblStatusValue.Name = "lblStatusValue";
+            this.lblStatusValue.Size = new System.Drawing.Size(180, 14);
+            this.lblStatusValue.TabIndex = 1;
+            this.lblStatusValue.Text = "RUNNING";
+            this.lblStatusValue.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
+            // Action Panel
+            this.actionPanel.Anchor = System.Windows.Forms.AnchorStyles.Top |
+                                      System.Windows.Forms.AnchorStyles.Right;
+            this.actionPanel.BackColor = System.Drawing.Color.Transparent;
+            this.actionPanel.Controls.Add(this.btnActions);
+            this.actionPanel.Location = new System.Drawing.Point(720, 0);
+            this.actionPanel.Name = "actionPanel";
+            this.actionPanel.Size = new System.Drawing.Size(160, 29);
+            this.actionPanel.TabIndex = 1;
+
+            // Actions Button
+            this.btnActions.Anchor = System.Windows.Forms.AnchorStyles.Right;
+            this.btnActions.BackColor = System.Drawing.Color.FromArgb(102, 192, 244);
+            this.btnActions.FlatAppearance.BorderSize = 0;
+            this.btnActions.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(92, 173, 220);
+            this.btnActions.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(122, 207, 255);
+            this.btnActions.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnActions.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Bold);
+            this.btnActions.ForeColor = System.Drawing.Color.FromArgb(22, 32, 45);
+            this.btnActions.Location = new System.Drawing.Point(50, 3);
+            this.btnActions.Name = "btnActions";
+            this.btnActions.Size = new System.Drawing.Size(100, 23);
+            this.btnActions.TabIndex = 0;
+            this.btnActions.Text = "▼ ACTIONS";
+            this.btnActions.UseVisualStyleBackColor = false;
+            this.btnActions.Click += new System.EventHandler(this.BtnActions_Click);
+            this.btnActions.Paint += new System.Windows.Forms.PaintEventHandler(this.BtnActions_Paint);
+            this.btnActions.MouseEnter += new System.EventHandler(this.BtnActions_MouseEnter);
+            this.btnActions.MouseLeave += new System.EventHandler(this.BtnActions_MouseLeave);
 
             // Context Menu
-            this.RCMenu.BackColor = System.Drawing.Color.FromArgb(35, 35, 35);
-            this.RCMenu.Font = new System.Drawing.Font("Segoe UI", 10F);
-            this.RCMenu.Name = "RCMenu";
-            this.RCMenu.RenderMode = System.Windows.Forms.ToolStripRenderMode.Professional;
-            this.RCMenu.ShowImageMargin = false;
-            this.RCMenu.ShowItemToolTips = false;
-            this.RCMenu.Size = new System.Drawing.Size(150, 4);
+            this.contextMenu.BackColor = System.Drawing.Color.FromArgb(27, 40, 56);
+            this.contextMenu.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.contextMenu.Name = "contextMenu";
+            this.contextMenu.RenderMode = System.Windows.Forms.ToolStripRenderMode.Professional;
+            this.contextMenu.ShowImageMargin = false;
+            this.contextMenu.Size = new System.Drawing.Size(150, 4);
 
             // Animation Timer
-            this.animationTimer.Interval = 32;
+            this.animationTimer.Interval = 50;
             this.animationTimer.Tick += new System.EventHandler(this.AnimationTimer_Tick);
             this.animationTimer.Enabled = true;
 
-            ((System.ComponentModel.ISupportInitialize)(this.PB_Lamp)).EndInit();
+            // Component initialization
+            this.L_Description = this.lblConnectionInfo;
+            this.L_Left = this.lblBotName;
+            this.PB_Lamp = this.statusIndicator;
+            this.RCMenu = this.contextMenu;
+            this.statusPanel = this.statusPanel;
+            this.progressBar = new System.Windows.Forms.Panel();
+            this.actionButton = this.btnActions;
+
+            this.mainPanel.ResumeLayout(false);
+            this.topPanel.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.statusIndicator)).EndInit();
+            this.bottomPanel.ResumeLayout(false);
             this.statusPanel.ResumeLayout(false);
+            this.actionPanel.ResumeLayout(false);
             this.ResumeLayout(false);
         }
 
         #endregion
 
+        // Legacy controls for compatibility
         private System.Windows.Forms.Label L_Description;
         private System.Windows.Forms.Label L_Left;
         private System.Windows.Forms.PictureBox PB_Lamp;
@@ -158,5 +265,19 @@ namespace SysBot.Pokemon.WinForms
         private System.Windows.Forms.Panel progressBar;
         private System.Windows.Forms.Button actionButton;
         private System.Windows.Forms.Timer animationTimer;
+
+        // New controls
+        private System.Windows.Forms.Panel mainPanel;
+        private System.Windows.Forms.Panel topPanel;
+        private System.Windows.Forms.Panel bottomPanel;
+        private System.Windows.Forms.PictureBox statusIndicator;
+        private System.Windows.Forms.Label lblBotName;
+        private System.Windows.Forms.Label lblRoutineType;
+        private System.Windows.Forms.Label lblConnectionInfo;
+        private System.Windows.Forms.Label lblStatus;
+        private System.Windows.Forms.Label lblStatusValue;
+        private System.Windows.Forms.Panel actionPanel;
+        private System.Windows.Forms.Button btnActions;
+        private System.Windows.Forms.ContextMenuStrip contextMenu;
     }
 }

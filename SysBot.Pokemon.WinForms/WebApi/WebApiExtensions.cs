@@ -23,7 +23,7 @@ public static class WebApiExtensions
     private static Main? _main;
     private static System.Threading.Timer? _scheduleTimer;
 
-    private const int WebPort = 8080;
+    private const int WebPort = 2305;
     private static int _tcpPort = 0;
     private static readonly object _portLock = new object();
     private static readonly Dictionary<int, DateTime> _portReservations = new();
@@ -245,7 +245,7 @@ public static class WebApiExtensions
         catch (Exception ex) when (ex.Message.Contains("conflicts with an existing registration"))
         {
             // Another instance became master first - gracefully become a slave
-            LogUtil.LogInfo("Port 8080 conflict during startup, starting as slave", "WebServer");
+            LogUtil.LogInfo("Port 2305 conflict during startup, starting as slave", "WebServer");
             StartTcpOnly();  // This will create the port file as a slave
         }
     }

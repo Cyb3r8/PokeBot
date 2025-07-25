@@ -67,7 +67,7 @@ public class TradeSettings : IBotStateSettings, ICountSettings
         public int TradeWaitTime { get; set; } = 30;
 
         [Category(TradeConfig), Description("Max amount of time in seconds pressing A to wait for a trade to process."), DisplayName("Maximum Trade Confirmation Time (seconds)")]
-        public int MaxTradeConfirmTime { get; set; } = 25;
+        public int MaxTradeConfirmTime { get; set; } = 30;
 
         [Category(TradeConfig), Description("Select default species for \"ItemTrade\", if configured."), DisplayName("Default Species for Item Trades")]
         public Species ItemTradeSpecies { get; set; } = Species.None;

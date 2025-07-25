@@ -16,7 +16,7 @@ using SysBot.Base;
 
 namespace SysBot.Pokemon.WinForms.WebApi;
 
-public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDisposable
+public class BotServer(Main mainForm, int port = 2305, int tcpPort = 8081) : IDisposable
 {
     private HttpListener? _listener;
     private Thread? _listenerThread;
@@ -84,7 +84,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 LogUtil.LogError($"Web server requires administrator privileges for network access. Currently limited to localhost only.", "WebServer");
                 LogUtil.LogInfo("To enable network access, either:", "WebServer");
                 LogUtil.LogInfo("1. Run this application as Administrator", "WebServer");
-                LogUtil.LogInfo("2. Or run this command as admin: netsh http add urlacl url=http://+:8080/ user=Everyone", "WebServer");
+                LogUtil.LogInfo("2. Or run this command as admin: netsh http add urlacl url=http://+:2305/ user=Everyone", "WebServer");
             }
 
             _running = true;

@@ -172,7 +172,7 @@ namespace SysBot.Pokemon.Discord
                 Color = embedColor,
                 Description = embedDescription
             }
-            .WithTitle("Important Announcement!")
+            .WithTitle("Important Announcement from Ninetales Paradise!")
             .WithThumbnailUrl(thumbnailUrl)
             .Build();
 

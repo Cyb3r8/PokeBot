@@ -1,15 +1,22 @@
 using PKHeX.Core;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 
 namespace SysBot.Pokemon
 {
     public class PokeTradeDetail<TPoke> : IEquatable<PokeTradeDetail<TPoke>>, IFavoredEntry where TPoke : PKM, new()
     {
+        private static readonly string TradeCountFile = "trade_count.txt";
         // ReSharper disable once StaticMemberInGenericType
         /// <summary> Global variable indicating the amount of trades created. </summary>
         private static int CreatedCount;
+
+        static PokeTradeDetail()
+        {
+            CreatedCount = LoadTradeCount();
+        }
 
         /// <summary> Indicates if this trade data should be given priority for queue insertion. </summary>
         public bool IsFavored { get; }
@@ -73,7 +80,7 @@ namespace SysBot.Pokemon
         public PokeTradeDetail(TPoke pkm, PokeTradeTrainerInfo info, IPokeTradeNotifier<TPoke> notifier, PokeTradeType type, int code, bool favored = false, List<Pictocodes>? lgcode = null, int batchTradeNumber = 0, int totalBatchTrades = 0, bool isMysteryEgg = false, int uniqueTradeID = 0, bool ignoreAutoOT = false, bool setEdited = false)
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
         {
-            ID = Interlocked.Increment(ref CreatedCount) % 50000;
+            ID = GetNextTradeID();
             Code = code;
             TradeData = pkm;
             Trainer = info;
@@ -92,16 +99,58 @@ namespace SysBot.Pokemon
             SetEdited = setEdited;
         }
 
+        private static int LoadTradeCount()
+        {
+            if (!File.Exists(TradeCountFile))
+            {
+                try
+                {
+                    File.WriteAllText(TradeCountFile, "0");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error creating trade count file: {ex.Message}");
+                }
+                return 0;
+            }
+
+            try
+            {
+                string content = File.ReadAllText(TradeCountFile);
+                if (int.TryParse(content, out int count))
+                    return count;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error reading trade count file: {ex.Message}");
+            }
+
+            return 0;
+        }
+
+        private static int GetNextTradeID()
+        {
+            int newCount = Interlocked.Increment(ref CreatedCount);
+
+            try
+            {
+                File.WriteAllText(TradeCountFile, newCount.ToString());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error writing trade count file: {ex.Message}");
+            }
+
+            return newCount;
+        }
+
         public void TradeInitialize(PokeRoutineExecutor<TPoke> routine) => Notifier.TradeInitialize(routine, this);
 
         public void TradeSearching(PokeRoutineExecutor<TPoke> routine) => Notifier.TradeSearching(routine, this);
 
         public void TradeCanceled(PokeRoutineExecutor<TPoke> routine, PokeTradeResult msg) => Notifier.TradeCanceled(routine, this, msg);
 
-        public virtual void TradeFinished(PokeRoutineExecutor<TPoke> routine, TPoke result)
-        {
-            Notifier.TradeFinished(routine, this, result);
-        }
+        public virtual void TradeFinished(PokeRoutineExecutor<TPoke> routine, TPoke result) => Notifier.TradeFinished(routine, this, result);
 
         public void SendNotification(PokeRoutineExecutor<TPoke> routine, string message) => Notifier.SendNotification(routine, this, message);
 

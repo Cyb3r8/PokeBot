@@ -1529,33 +1529,60 @@
             loadRestartSchedule();
             checkRestartSchedule();
 
+            // Helper function for closest() polyfill
+            function findClosest(element, selector) {
+                if (!element || element.nodeType !== 1) return null;
+                
+                if (typeof element.closest === 'function') {
+                    return element.closest(selector);
+                }
+                
+                // Polyfill for older browsers
+                let el = element;
+                while (el && el.nodeType === 1) {
+                    // Use matches() or fallback to alternative methods
+                    let matches = false;
+                    if (el.matches) {
+                        matches = el.matches(selector);
+                    } else if (el.webkitMatchesSelector) {
+                        matches = el.webkitMatchesSelector(selector);
+                    } else if (el.mozMatchesSelector) {
+                        matches = el.mozMatchesSelector(selector);
+                    } else if (el.msMatchesSelector) {
+                        matches = el.msMatchesSelector(selector);
+                    }
+                    
+                    if (matches) {
+                        return el;
+                    }
+                    el = el.parentElement;
+                }
+                return null;
+            }
+
             // Event listeners
             document.addEventListener('click', (e) => {
-                if (e.target && e.target.nodeType === 1 && typeof e.target.closest === 'function') {
-                    if (!e.target.closest('.instance-controls')) {
+                if (e.target && e.target.nodeType === 1) {
+                    if (!findClosest(e.target, '.instance-controls')) {
                         document.querySelectorAll('.action-menu.show').forEach(menu => {
                             menu.classList.remove('show');
                         });
                     }
-                } else {
-                    document.querySelectorAll('.action-menu.show').forEach(menu => {
-                        menu.classList.remove('show');
-                    });
                 }
             });
 
             // Track mouse interaction
             document.addEventListener('mouseenter', (e) => {
-                if (e.target && e.target.nodeType === 1 && typeof e.target.closest === 'function') {
-                    if (e.target.closest('.instance-card')) {
+                if (e.target && e.target.nodeType === 1) {
+                    if (findClosest(e.target, '.instance-card')) {
                         isInteracting = true;
                     }
                 }
             }, true);
 
             document.addEventListener('mouseleave', (e) => {
-                if (e.target && e.target.nodeType === 1 && typeof e.target.closest === 'function') {
-                    if (e.target.closest('.instance-card')) {
+                if (e.target && e.target.nodeType === 1) {
+                    if (findClosest(e.target, '.instance-card')) {
                         isInteracting = false;
                     }
                 }
@@ -1563,8 +1590,8 @@
 
             // Track touch interaction
             document.addEventListener('touchstart', (e) => {
-                if (e.target && e.target.nodeType === 1 && typeof e.target.closest === 'function') {
-                    if (e.target.closest('.instance-card')) {
+                if (e.target && e.target.nodeType === 1) {
+                    if (findClosest(e.target, '.instance-card')) {
                         isInteracting = true;
                     }
                 }
@@ -1996,9 +2023,15 @@
                 const instancesData = await instancesResponse.json();
                 const currentVersion = instancesData.Instances?.[0]?.Version || 'Unknown';
 
-                document.getElementById('current-version').textContent = currentVersion;
-                document.getElementById('new-version').textContent = 'Checking...';
-                document.getElementById('changelog-content').innerHTML = '<div class="spinner"></div>';
+                safeElementAccess('current-version', (el) => {
+                    el.textContent = currentVersion;
+                });
+                safeElementAccess('new-version', (el) => {
+                    el.textContent = 'Checking...';
+                });
+                safeElementAccess('changelog-content', (el) => {
+                    el.innerHTML = '<div class="spinner"></div>';
+                });
 
                 const checkResponse = await fetch(`${API_BASE}/update/check`);
                 let updateInfo = { version: 'Unknown', changelog: 'No changelog available' };
@@ -2010,13 +2043,31 @@
                     updateInfo.changelog = 'Unable to fetch changelog. Update will proceed to latest version.';
                 }
 
-                document.getElementById('new-version').textContent = updateInfo.version;
-                document.getElementById('changelog-content').textContent = updateInfo.changelog;
+                safeElementAccess('new-version', (el) => {
+                    el.textContent = updateInfo.version;
+                });
+                safeElementAccess('changelog-content', (el) => {
+                    el.textContent = updateInfo.changelog;
+                });
 
             } catch (error) {
                 console.error('Error checking updates:', error);
-                document.getElementById('new-version').textContent = 'Latest';
-                document.getElementById('changelog-content').textContent = 'Unable to fetch update information. Click Update to proceed.';
+                safeElementAccess('new-version', (el) => {
+                    el.textContent = 'Latest';
+                });
+                safeElementAccess('changelog-content', (el) => {
+                    el.textContent = 'Unable to fetch update information. Click Update to proceed.';
+                });
+            }
+        }
+
+        // Safe element access helper
+        function safeElementAccess(elementId, action) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                action(element);
+            } else {
+                console.warn(`Element with ID '${elementId}' not found`);
             }
         }
 
@@ -2030,8 +2081,12 @@
 
         async function updateSpecificBotType(botType) {
             showModal('progress-modal');
-            document.getElementById('progress-modal-title').textContent = `${botType} Update in Progress`;
-            document.getElementById('force-update-info').style.display = 'block';
+            safeElementAccess('progress-modal-title', (el) => {
+                el.textContent = `${botType} Update in Progress`;
+            });
+            safeElementAccess('force-update-info', (el) => {
+                el.style.display = 'block';
+            });
 
             updateState.type = 'update';
             updateState.startTime = Date.now();
@@ -2082,8 +2137,12 @@
         async function confirmUpdate() {
             closeModal('update-modal');
             showModal('progress-modal');
-            document.getElementById('progress-modal-title').textContent = 'Update in Progress';
-            document.getElementById('force-update-info').style.display = 'block';
+            safeElementAccess('progress-modal-title', (el) => {
+                el.textContent = 'Update in Progress';
+            });
+            safeElementAccess('force-update-info', (el) => {
+                el.style.display = 'block';
+            });
 
             updateState.type = 'update';
             updateState.startTime = Date.now();
@@ -2945,7 +3004,9 @@
                 }
 
                 // Reset the force update info text
-                document.getElementById('force-update-info').textContent = '⚡ Update will be forced automatically after timeout';
+                safeElementAccess('force-update-info', (el) => {
+                    el.textContent = '⚡ Update will be forced automatically after timeout';
+                });
             }
         }
 
@@ -2954,11 +3015,17 @@
         }
 
         function updateProgress(status, details, percentage) {
-            document.getElementById('progress-status').textContent = status;
-            document.getElementById('progress-details').textContent = details;
+            safeElementAccess('progress-status', (el) => {
+                el.textContent = status;
+            });
+            safeElementAccess('progress-details', (el) => {
+                el.textContent = details;
+            });
 
             if (percentage >= 0) {
-                document.getElementById('progress-bar').style.width = `${percentage}%`;
+                safeElementAccess('progress-bar', (el) => {
+                    el.style.width = `${percentage}%`;
+                });
             }
 
             const iconMap = {

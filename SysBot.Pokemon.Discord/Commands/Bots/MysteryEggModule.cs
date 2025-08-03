@@ -20,6 +20,7 @@ namespace SysBot.Pokemon.Discord
         [Command("mysteryegg")]
         [Alias("me")]
         [Summary("Trades an egg generated from a random Pokémon.")]
+        [RequireQueueRole(nameof(DiscordManager.RolesMysteryEgg))]
         public async Task TradeMysteryEggAsync()
         {
             var userID = Context.User.Id;

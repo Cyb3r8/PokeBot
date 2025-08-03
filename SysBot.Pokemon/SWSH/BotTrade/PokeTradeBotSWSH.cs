@@ -382,7 +382,7 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             poke.Notifier.UpdateBatchProgress(currentTradeIndex + 1, toSend, poke.UniqueTradeID);
 
             // Apply AutoOT if needed
-            if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
+            if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && PokeBot.CanUseAutoOT(poke))
             {
                 toSend = await ApplyAutoOT(toSend, trainerName, sav, token);
                 tradesToProcess[currentTradeIndex] = toSend;
@@ -770,7 +770,7 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             return PokeTradeResult.RecoverOpenBox;
         }
 
-        if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT)
+        if (hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && PokeBot.CanUseAutoOT(poke))
         {
             toSend = await ApplyAutoOT(toSend, trainerName, sav, token);
         }
@@ -1658,7 +1658,7 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
         }
         else
         {
-            Log("Pokemon not valid after using Trade Partner Info.");
+            Log($"Pokemon not valid after using Trade Partner Info. Legality issues: {tradeswsh.Report()}");
             return toSend;
         }
     }

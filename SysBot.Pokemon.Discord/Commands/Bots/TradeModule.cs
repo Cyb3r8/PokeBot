@@ -173,6 +173,7 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
     [Command("egg")]
     [Alias("Egg")]
     [Summary("Trades an egg generated from the provided Pokémon name.")]
+    [RequireQueueRole(nameof(DiscordManager.RolesEgg))]
     public async Task TradeEgg([Remainder] string egg)
     {
         var userID = Context.User.Id;
@@ -183,7 +184,7 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
     [Command("egg")]
     [Alias("Egg")]
     [Summary("Trades an egg generated from the provided Pokémon name.")]
-    [RequireQueueRole(nameof(DiscordManager.RolesTrade))]
+    [RequireQueueRole(nameof(DiscordManager.RolesEgg))]
     public async Task TradeEggAsync([Summary("Trade Code")] int code, [Summary("Showdown Set")][Remainder] string content)
     {
         var userID = Context.User.Id;
@@ -546,7 +547,7 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
     [Command("batchTrade")]
     [Alias("bt")]
     [Summary("Makes the bot trade multiple Pokémon from the provided list, up to a maximum of 4 trades.")]
-    [RequireQueueRole(nameof(DiscordManager.RolesTrade))]
+    [RequireQueueRole(nameof(DiscordManager.RolesBatchTrade))]
     public async Task BatchTradeAsync([Summary("List of Showdown Sets separated by '---'")][Remainder] string content)
     {
         var userID = Context.User.Id;
@@ -556,6 +557,18 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 "You already have an existing trade in the queue that cannot be cleared. Please wait until it is processed.", 2);
             return;
         }
+
+        // Check if user has permission to use AutoOT
+        bool hasAutoOTPermission = true;
+        if (SysCordSettings.Manager != null)
+        {
+            if (Context.User is SocketGuildUser gUser)
+            {
+                var roles = gUser.Roles.Select(z => z.Name);
+                hasAutoOTPermission = SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles);
+            }
+        }
+
         content = ReusableActions.StripCodeBlock(content);
         var trades = BatchHelpers<T>.ParseBatchTradeContent(content);
         const int maxTradesAllowed = 4;
@@ -579,6 +592,12 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                     var (pk, error, set, legalizationHint) = await BatchHelpers<T>.ProcessSingleTradeForBatch(trades[i]);
                     if (pk != null)
                     {
+                        // If user doesn't have AutoOT permission, force ignoreAutoOT for all Pokémon in batch
+                        if (!hasAutoOTPermission)
+                        {
+                            // This will be handled by the trade bot when processing the batch
+                            // We can't modify the Pokémon here, but the trade bot will check CanUseAutoOT
+                        }
                         batchPokemonList.Add(pk);
                     }
                     else
@@ -656,6 +675,20 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 var sig = Context.User.GetFavor();
                 var ignoreAutoOT = content.Contains("OT:") || content.Contains("TID:") || content.Contains("SID:");
 
+                // Check if user has permission to use AutoOT
+                if (!ignoreAutoOT && SysCordSettings.Manager != null)
+                {
+                    if (Context.User is SocketGuildUser gUser)
+                    {
+                        var roles = gUser.Roles.Select(z => z.Name);
+                        if (!SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles))
+                        {
+                            // User doesn't have AutoOT permission, force ignoreAutoOT to true
+                            ignoreAutoOT = true;
+                        }
+                    }
+                }
+
                 await Helpers<T>.AddTradeToQueueAsync(
                     Context, code, Context.User.Username, result.Pokemon, sig, Context.User,
                     isHiddenTrade: isHiddenTrade,
@@ -681,6 +714,20 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         var pk = await Helpers<T>.ProcessTradeAttachmentAsync(Context);
         if (pk == null)
             return;
+
+        // Check if user has permission to use AutoOT
+        if (!ignoreAutoOT && SysCordSettings.Manager != null)
+        {
+            if (Context.User is SocketGuildUser gUser)
+            {
+                var roles = gUser.Roles.Select(z => z.Name);
+                if (!SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles))
+                {
+                    // User doesn't have AutoOT permission, force ignoreAutoOT to true
+                    ignoreAutoOT = true;
+                }
+            }
+        }
 
         await Helpers<T>.AddTradeToQueueAsync(Context, code, user.Username, pk, sig, user,
             isHiddenTrade: isHiddenTrade, ignoreAutoOT: ignoreAutoOT);

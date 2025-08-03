@@ -119,6 +119,13 @@ public static class QueueHelper<T> where T : PKM, new()
         var detail = new PokeTradeDetail<T>(pk, trainer, notifier, t, code, sig == RequestSignificance.Favored,
             lgcode, batchTradeNumber, totalBatchTrades, isMysteryEgg, uniqueTradeID, ignoreAutoOT, setEdited);
 
+        // Add user roles to context for AutoOT permission checking
+        if (context.User is SocketGuildUser gUser)
+        {
+            var roles = gUser.Roles.Select(z => z.Name).ToList();
+            detail.Context["UserRoles"] = roles;
+        }
+
         var trade = new TradeEntry<T>(detail, userID, PokeRoutineType.LinkTrade, name, uniqueTradeID);
         var hub = SysCord<T>.Runner.Hub;
         var Info = hub.Queues.Info;
@@ -286,6 +293,13 @@ public static class QueueHelper<T> where T : PKM, new()
         {
             BatchTrades = allTrades
         };
+
+        // Add user roles to context for AutoOT permission checking
+        if (context.User is SocketGuildUser gUser)
+        {
+            var roles = gUser.Roles.Select(z => z.Name).ToList();
+            detail.Context["UserRoles"] = roles;
+        }
 
         var trade = new TradeEntry<T>(detail, userID, PokeRoutineType.Batch, name, uniqueTradeID);
         var hub = SysCord<T>.Runner.Hub;

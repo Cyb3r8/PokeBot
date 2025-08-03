@@ -22,6 +22,14 @@ public class DiscordManager(DiscordSettings Config)
 
     public RemoteControlAccessList RolesFixOT => Config.RoleCanFixOT;
 
+    public RemoteControlAccessList RolesAutoOT => Config.RoleCanAutoOT;
+
+    public RemoteControlAccessList RolesEgg => Config.RoleCanEgg;
+
+    public RemoteControlAccessList RolesBatchTrade => Config.RoleCanBatchTrade;
+
+    public RemoteControlAccessList RolesMysteryEgg => Config.RoleCanMysteryEgg;
+
     public RemoteControlAccessList RolesRemoteControl => Config.RoleRemoteControl;
 
     public RemoteControlAccessList RolesSeed => Config.RoleCanSeedCheckorSpecialRequest;
@@ -68,6 +76,10 @@ public class DiscordManager(DiscordSettings Config)
         nameof(RolesSeed) => RolesSeed,
         nameof(RolesDump) => RolesDump,
         nameof(RolesFixOT) => RolesFixOT,
+        nameof(RolesAutoOT) => RolesAutoOT,
+        nameof(RolesEgg) => RolesEgg,
+        nameof(RolesBatchTrade) => RolesBatchTrade,
+        nameof(RolesMysteryEgg) => RolesMysteryEgg,
         nameof(RolesRemoteControl) => RolesRemoteControl,
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };

@@ -774,7 +774,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 {
                     try
                     {
-                        version = SysBot.Pokemon.Helpers.PokeBot.Version;
+                        version = SysBot.Pokemon.PokeBot.Version;
                     }
                     catch { }
                 }

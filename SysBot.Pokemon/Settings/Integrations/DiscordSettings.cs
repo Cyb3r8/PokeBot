@@ -143,6 +143,18 @@ public class DiscordSettings
     [Category(Roles), Description("Users with this role are allowed to enter the Trade queue.")]
     public RemoteControlAccessList RoleCanTrade { get; set; } = new() { AllowIfEmpty = true };
 
+    [Category(Roles), Description("Users with this role are allowed to use AutoOT functionality.")]
+    public RemoteControlAccessList RoleCanAutoOT { get; set; } = new() { AllowIfEmpty = false };
+
+    [Category(Roles), Description("Users with this role are allowed to use the Egg command.")]
+    public RemoteControlAccessList RoleCanEgg { get; set; } = new() { AllowIfEmpty = true };
+
+    [Category(Roles), Description("Users with this role are allowed to use the BatchTrade command.")]
+    public RemoteControlAccessList RoleCanBatchTrade { get; set; } = new() { AllowIfEmpty = true };
+
+    [Category(Roles), Description("Users with this role are allowed to use the MysteryEgg command.")]
+    public RemoteControlAccessList RoleCanMysteryEgg { get; set; } = new() { AllowIfEmpty = true };
+
     [Category(Roles), Description("Users with this role are allowed to join the queue with a better position.")]
     public RemoteControlAccessList RoleFavored { get; set; } = new() { AllowIfEmpty = false };
 

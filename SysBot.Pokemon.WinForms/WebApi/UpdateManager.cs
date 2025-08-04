@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using SysBot.Base;
 using SysBot.Pokemon.Helpers;
-using SysBot.Pokemon.WinForms.Controls;
 
 namespace SysBot.Pokemon.WinForms.WebApi;
 
@@ -304,6 +303,7 @@ public static class UpdateManager
         public bool NeedsUpdate { get; set; }
         public bool UpdateStarted { get; set; }
         public string? Error { get; set; }
+        public string BotType { get; set; } = string.Empty;
     }
 
     public class UpdateStatus
@@ -426,6 +426,28 @@ public static class UpdateManager
             LogUtil.LogError($"Error getting latest version for {botType}: {ex.Message}", "UpdateManager");
         }
         return "Unknown";
+    }
+
+    private static async Task<(bool updateAvailable, string currentVersion, string latestVersion)> CheckForUpdatesForBotType(string botType)
+    {
+        try
+        {
+            if (botType == "PokeBot")
+            {
+                var (updateAvailable, _, newVersion) = await UpdateChecker.CheckForUpdatesAsync(false);
+                return (updateAvailable, "Unknown", newVersion);
+            }
+            else if (botType == "RaidBot")
+            {
+                var (updateAvailable, _, newVersion) = await RaidBotUpdateChecker.CheckForUpdatesAsync(false);
+                return (updateAvailable, "Unknown", newVersion);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Error checking updates for {botType}: {ex.Message}", "UpdateManager");
+        }
+        return (false, "Unknown", "Unknown");
     }
 
     // New staged update process implementation
@@ -1822,55 +1844,6 @@ public static class UpdateManager
         }
     }
 
-    private static List<(int ProcessId, int Port, string Version)> GetAllInstances(int currentPort)
-    {
-        var instances = new List<(int, int, string)>
-        {
-            (Environment.ProcessId, currentPort, PokeBot.Version)
-        };
-
-        try
-        {
-            // Scan for PokeBot processes
-            var pokeBotProcesses = Process.GetProcessesByName("PokeBot")
-                .Where(p => p.Id != Environment.ProcessId);
-
-            foreach (var process in pokeBotProcesses)
-            {
-                try
-                {
-                    var instance = TryGetInstanceInfo(process, "PokeBot");
-                    if (instance.HasValue)
-                        instances.Add(instance.Value);
-                }
-                catch (Exception ex)
-            {
-                LogUtil.LogError($"Error in process operation: {ex.Message}", "UpdateManager");
-            }
-            }
-
-            // Scan for RaidBot processes
-            var raidBotProcesses = Process.GetProcessesByName("SysBot")
-                .Where(p => p.Id != Environment.ProcessId);
-
-            foreach (var process in raidBotProcesses)
-            {
-                try
-                {
-                    var instance = TryGetInstanceInfo(process, "RaidBot");
-                    if (instance.HasValue)
-                        instances.Add(instance.Value);
-                }
-                catch (Exception ex)
-            {
-                LogUtil.LogError($"Error in process operation: {ex.Message}", "UpdateManager");
-            }
-            }
-        }
-        catch { }
-
-        return instances;
-    }
 
     private static (int ProcessId, int Port, string Version)? TryGetInstanceInfo(Process process, string botType)
     {
@@ -2114,25 +2087,6 @@ public static class UpdateManager
         }
     }
 
-    private static bool IsPortOpen(int port)
-    {
-        try
-        {
-            using var client = new System.Net.Sockets.TcpClient();
-            var result = client.BeginConnect("127.0.0.1", port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(200)); // Reduziert von 1s auf 200ms
-            if (success)
-            {
-                client.EndConnect(result);
-                return true;
-            }
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 
     // Restart functionality
     public class RestartAllResult

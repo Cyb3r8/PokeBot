@@ -379,3 +379,6 @@ ip_mapping.json
 *.lock
 update_status.json
 bot_status.json
+
+# Claude Code directory
+.claude/

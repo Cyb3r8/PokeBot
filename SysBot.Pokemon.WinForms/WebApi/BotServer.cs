@@ -205,6 +205,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 "/api/bot/restart/proceed" => await ProceedWithRestarts(request),
                 "/api/bot/restart/schedule" => await UpdateRestartSchedule(request),
                 "/icon.ico" => ServeIcon(),
+                var path when path?.EndsWith(".png") == true => ServeImage(path),
                 _ => null
             };
 
@@ -226,13 +227,17 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 {
                     response.ContentType = "image/x-icon";
                 }
+                else if (request.Url?.LocalPath?.EndsWith(".png") == true)
+                {
+                    response.ContentType = "image/png";
+                }
                 else
                 {
                     response.ContentType = "application/json";
                 }
             }
 
-            // Handle binary content for icon
+            // Handle binary content for icon and images
             if (request.Url?.LocalPath == "/icon.ico" && responseString == "BINARY_ICON")
             {
                 var iconBytes = GetIconBytes();
@@ -240,6 +245,17 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 {
                     response.ContentLength64 = iconBytes.Length;
                     await response.OutputStream.WriteAsync(iconBytes, 0, iconBytes.Length);
+                    await response.OutputStream.FlushAsync();
+                    return;
+                }
+            }
+            else if (request.Url?.LocalPath?.EndsWith(".png") == true && responseString == "BINARY_IMAGE")
+            {
+                var imageBytes = GetImageBytes(request.Url.LocalPath);
+                if (imageBytes != null)
+                {
+                    response.ContentLength64 = imageBytes.Length;
+                    await response.OutputStream.WriteAsync(imageBytes, 0, imageBytes.Length);
                     await response.OutputStream.FlushAsync();
                     return;
                 }
@@ -855,9 +871,21 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             // Local process discovery (only if enabled)
             if (scanLocalhost)
             {
-                // Scan for PokeBot processes
-                var pokeBotProcesses = Process.GetProcessesByName("PokeBot")
-                    .Where(p => p.Id != currentPid);
+                // Scan for PokeBot processes (try multiple possible names)
+                var pokeBotProcesses = new List<Process>();
+                try
+                {
+                    pokeBotProcesses.AddRange(Process.GetProcessesByName("PokeBot")
+                        .Where(p => p.Id != currentPid));
+                }
+                catch { }
+                
+                try
+                {
+                    pokeBotProcesses.AddRange(Process.GetProcessesByName("SysBot.Pokemon.WinForms")
+                        .Where(p => p.Id != currentPid));
+                }
+                catch { }
 
                 foreach (var process in pokeBotProcesses)
                 {
@@ -866,9 +894,28 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                         instances.Add(instance);
                 }
 
-                // Scan for RaidBot processes (they may have different process names)
-                var raidBotProcesses = Process.GetProcessesByName("SysBot")
-                    .Where(p => p.Id != currentPid);
+                // Scan for RaidBot processes (try multiple possible names)
+                var raidBotProcesses = new List<Process>();
+                try
+                {
+                    raidBotProcesses.AddRange(Process.GetProcessesByName("SysBot")
+                        .Where(p => p.Id != currentPid));
+                }
+                catch { }
+                
+                try
+                {
+                    raidBotProcesses.AddRange(Process.GetProcessesByName("SVRaidBot")
+                        .Where(p => p.Id != currentPid));
+                }
+                catch { }
+                
+                try
+                {
+                    raidBotProcesses.AddRange(Process.GetProcessesByName("SysBot.Pokemon.WinForms")
+                        .Where(p => p.Id != currentPid));
+                }
+                catch { }
 
                 foreach (var process in raidBotProcesses)
                 {
@@ -992,22 +1039,31 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 return null;
 
             var exeDir = Path.GetDirectoryName(exePath)!;
+            var processName = process.ProcessName.ToLowerInvariant();
             
-            // Try to find port file for this bot type
-            var portFile = "";
+            // Better bot type detection based on process name and executable path
+            if (processName.Contains("raid") || processName.Contains("sv") || exePath.Contains("SVRaidBot"))
+                botType = "RaidBot";
+            else if (processName.Contains("poke") || exePath.Contains("PokeBot"))
+                botType = "PokeBot";
+            
+            // Try to find port file with multiple naming conventions
+            var possiblePortFiles = new List<string>();
+            
             if (botType == "RaidBot")
             {
-                portFile = Path.Combine(exeDir, $"SVRaidBot_{process.Id}.port");
-                if (!File.Exists(portFile))
-                {
-                    // Sometimes RaidBots might also use PokeBot naming
-                    portFile = Path.Combine(exeDir, $"PokeBot_{process.Id}.port");
-                }
+                possiblePortFiles.Add(Path.Combine(exeDir, $"SVRaidBot_{process.Id}.port"));
+                possiblePortFiles.Add(Path.Combine(exeDir, $"SysBot_{process.Id}.port"));
+                possiblePortFiles.Add(Path.Combine(exeDir, $"PokeBot_{process.Id}.port"));
             }
             else
             {
-                portFile = Path.Combine(exeDir, $"PokeBot_{process.Id}.port");
+                possiblePortFiles.Add(Path.Combine(exeDir, $"PokeBot_{process.Id}.port"));
+                possiblePortFiles.Add(Path.Combine(exeDir, $"SysBot_{process.Id}.port"));
             }
+            
+            // Find the first existing port file
+            var portFile = possiblePortFiles.FirstOrDefault(File.Exists) ?? "";
 
             if (!File.Exists(portFile))
                 return null;
@@ -1122,21 +1178,33 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 }
                 else
                 {
-                    // Fallback: try to detect from other properties
+                    // Enhanced fallback: try to detect from other properties
                     var versionStr = instance.Version.ToLower();
                     var nameStr = instance.Name.ToLower();
+                    var modeStr = instance.Mode.ToLower();
                     
-                    if (nameStr.Contains("raid") || versionStr.Contains("raid"))
+                    if (nameStr.Contains("raid") || versionStr.Contains("raid") || 
+                        nameStr.Contains("sv") || versionStr.Contains("sv") ||
+                        modeStr.Contains("raid"))
                     {
                         instance.BotType = "RaidBot";
-                        if (instance.Name == "Unknown Bot")
+                        if (instance.Name == "Unknown Bot" || instance.Name == "SysBot")
                             instance.Name = "SVRaidBot";
                     }
-                    else if (nameStr.Contains("poke") || versionStr.Contains("poke"))
+                    else if (nameStr.Contains("poke") || versionStr.Contains("poke") ||
+                             modeStr.Contains("poke"))
                     {
                         instance.BotType = "PokeBot";
-                        if (instance.Name == "Unknown Bot")
+                        if (instance.Name == "Unknown Bot" || instance.Name == "SysBot")
                             instance.Name = "PokeBot";
+                    }
+                    else
+                    {
+                        // Final fallback based on port range (if using standard port allocation)
+                        if (port >= 8090 && port <= 8099)
+                            instance.BotType = "RaidBot";
+                        else
+                            instance.BotType = "PokeBot"; // Default
                     }
                 }
             }
@@ -1460,6 +1528,11 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
     {
         return "BINARY_ICON"; // Special marker for binary content
     }
+    
+    private string ServeImage(string path)
+    {
+        return "BINARY_IMAGE"; // Special marker for binary content
+    }
 
     private byte[]? GetIconBytes()
     {
@@ -1505,6 +1578,55 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         catch (Exception ex)
         {
             LogUtil.LogError($"Failed to load icon: {ex.Message}", "WebServer");
+            return null;
+        }
+    }
+    
+    private byte[]? GetImageBytes(string imagePath)
+    {
+        try
+        {
+            // Extract filename from path (e.g., "/update_pokebot.png" -> "update_pokebot.png")
+            var fileName = Path.GetFileName(imagePath);
+            
+            // First try to find image in the executable directory
+            var exePath = Application.ExecutablePath;
+            var exeDir = Path.GetDirectoryName(exePath) ?? Environment.CurrentDirectory;
+            var resourcesDir = Path.Combine(exeDir, "Resources");
+            var imagePath1 = Path.Combine(resourcesDir, fileName);
+            var imagePath2 = Path.Combine(exeDir, fileName);
+            
+            if (File.Exists(imagePath1))
+            {
+                return File.ReadAllBytes(imagePath1);
+            }
+            
+            if (File.Exists(imagePath2))
+            {
+                return File.ReadAllBytes(imagePath2);
+            }
+            
+            // Try to extract from embedded resources
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(name => name.EndsWith(fileName, StringComparison.OrdinalIgnoreCase));
+            
+            if (!string.IsNullOrEmpty(resourceName))
+            {
+                using var imageStream = assembly.GetManifestResourceStream(resourceName);
+                if (imageStream != null)
+                {
+                    using var memoryStream = new MemoryStream();
+                    imageStream.CopyTo(memoryStream);
+                    return memoryStream.ToArray();
+                }
+            }
+            
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Failed to load image {imagePath}: {ex.Message}", "WebServer");
             return null;
         }
     }

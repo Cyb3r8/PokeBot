@@ -111,7 +111,7 @@ namespace SysBot.Pokemon.Twitch
             return ((int)(timestamp % int.MaxValue) * 1000) + randomValue;
         }
 
-        private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg)
+        private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg, List<Pictocodes>? lgcode = null)
         {
             // var user = e.WhisperMessage.UserId;
             var userID = ulong.Parse(e.WhisperMessage.UserId);
@@ -120,7 +120,7 @@ namespace SysBot.Pokemon.Twitch
             var trainer = new PokeTradeTrainerInfo(name, ulong.Parse(e.WhisperMessage.UserId));
             var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, e.WhisperMessage.Username, client, Channel, Hub.Config.Twitch);
             var tt = type == PokeRoutineType.SeedCheck ? PokeTradeType.Seed : PokeTradeType.Specific;
-            var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored);
+            var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored, lgcode);
             var uniqueTradeID = GenerateUniqueTradeID();
             var trade = new TradeEntry<T>(detail, userID, type, name, uniqueTradeID);
 
@@ -141,6 +141,17 @@ namespace SysBot.Pokemon.Twitch
                 var eta = Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
                 msg += $". Estimated: {eta:F1} minutes.";
             }
+            
+            // Add info about trade code delivery based on game type
+            if (typeof(T) == typeof(PB7))
+            {
+                msg += " Your LGPE pictocodes will be sent via whisper.";
+            }
+            else
+            {
+                msg += " Your trade code will be sent via whisper.";
+            }
+            
             return true;
         }
 
@@ -228,12 +239,37 @@ namespace SysBot.Pokemon.Twitch
             if (user == null)
                 return;
             QueuePool.Remove(user);
-            var msg = e.WhisperMessage.Message;
+            
             try
             {
-                int code = Util.ToInt32(msg);
                 var sig = GetUserSignificance(user);
-                var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message);
+                var userID = ulong.Parse(e.WhisperMessage.UserId);
+                
+                // Generate codes automatically like Discord does
+                var code = Info.GetRandomTradeCode(userID);
+                List<Pictocodes>? lgCode = null;
+                
+                // Check if this is LGPE (PB7) - generate pictocodes automatically
+                if (typeof(T) == typeof(PB7))
+                {
+                    lgCode = Info.GetRandomLGTradeCode();
+                }
+                
+                var success = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message, lgCode);
+                
+                if (success)
+                {
+                    // Send the trade code via whisper
+                    if (lgCode != null)
+                    {
+                        var codeString = string.Join(", ", lgCode);
+                        client.SendWhisper(e.WhisperMessage.Username, $"Your LGPE trade code: {codeString}");
+                    }
+                    else
+                    {
+                        client.SendWhisper(e.WhisperMessage.Username, $"Your trade code: {code:0000 0000}");
+                    }
+                }
                 client.SendMessage(Channel, message);
             }
             catch (Exception ex)
@@ -241,6 +277,19 @@ namespace SysBot.Pokemon.Twitch
                 LogUtil.LogSafe(ex, nameof(TwitchBot<T>));
                 LogUtil.LogError($"{ex.Message}", nameof(TwitchBot<T>));
             }
+        }
+
+        private List<Pictocodes> GenerateRandomLGPECode()
+        {
+            var code = new List<Pictocodes>();
+            var random = new Random();
+            
+            for (int i = 0; i < 3; i++)
+            {
+                code.Add((Pictocodes)random.Next(10)); // 0-9 for all available pictocodes
+            }
+            
+            return code;
         }
 
         private RequestSignificance GetUserSignificance(TwitchQueue<T> user)

@@ -124,8 +124,21 @@ namespace SysBot.Pokemon.Twitch
             var receive = Data.Species == 0 ? string.Empty : Data.IsEgg || (Data.Species == 132 && Data.IsNicknamed) ? $" ({Data.Species} ({Data.Nickname}))" : $" ({Data.Nickname})";
             var msg = $"@{info.Trainer.TrainerName} (ID: {info.ID}): Initializing trade{receive} with you. Please be ready. Use the code you whispered me to search!";
             var dest = Settings.TradeStartDestination;
+            
             if (dest == TwitchMessageDestination.Whisper)
-                msg += $" Your trade code is: {info.Code:0000 0000}";
+            {
+                // Check if this is LGPE
+                if (info.LGPETradeCode != null && info.LGPETradeCode.Count > 0)
+                {
+                    var codeString = string.Join(", ", info.LGPETradeCode);
+                    msg += $" Your LGPE trade code: {codeString}";
+                }
+                else
+                {
+                    msg += $" Your trade code is: {info.Code:0000 0000}";
+                }
+            }
+            
             LogUtil.LogText(msg);
             SendMessage(msg, dest);
         }
@@ -136,10 +149,23 @@ namespace SysBot.Pokemon.Twitch
             var trainer = string.IsNullOrEmpty(name) ? string.Empty : $", @{name}";
             var message = $"I'm waiting for you{trainer}! My IGN is {routine.InGameName}.";
             var dest = Settings.TradeSearchDestination;
+            
             if (dest == TwitchMessageDestination.Channel)
                 message += " Use the code you whispered me to search!";
             else if (dest == TwitchMessageDestination.Whisper)
-                message += $" Your trade code is: {info.Code:0000 0000}";
+            {
+                // Check if this is LGPE
+                if (info.LGPETradeCode != null && info.LGPETradeCode.Count > 0)
+                {
+                    var codeString = string.Join(", ", info.LGPETradeCode);
+                    message += $" Your LGPE trade code: {codeString}";
+                }
+                else
+                {
+                    message += $" Your trade code is: {info.Code:0000 0000}";
+                }
+            }
+            
             LogUtil.LogText(message);
             SendMessage($"@{info.Trainer.TrainerName} {message}", dest);
         }

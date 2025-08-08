@@ -1902,7 +1902,6 @@ namespace SysBot.Pokemon.WinForms
         private Button btnNavLogs;
         private Panel sidebarBottomPanel;
         private Button btnUpdate;
-        private Button btnExit;
         private Label titleLabel;
         private FlowLayoutPanel controlButtonsPanel;
         private Button btnStart;

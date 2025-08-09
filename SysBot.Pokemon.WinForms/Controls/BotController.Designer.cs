@@ -241,7 +241,6 @@ namespace SysBot.Pokemon.WinForms
             this.L_Left = this.lblBotName;
             this.PB_Lamp = this.statusIndicator;
             this.RCMenu = this.contextMenu;
-            this.statusPanel = this.statusPanel;
             this.progressBar = new System.Windows.Forms.Panel();
             this.actionButton = this.btnActions;
 

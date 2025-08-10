@@ -60,7 +60,7 @@ namespace SysBot.Pokemon.WinForms
 
         private void ConfigureContextMenu()
         {
-            var opt = (BotControlCommand[])Enum.GetValues(typeof(BotControlCommand));
+            var opt = Enum.GetValues<BotControlCommand>();
 
             contextMenu.Renderer = new CuztomMenuRenderer();
 
@@ -150,7 +150,7 @@ namespace SysBot.Pokemon.WinForms
 
             foreach (var tsi in contextMenu.Items.OfType<ToolStripMenuItem>())
             {
-                var text = tsi.Text.Substring(3).Trim();
+                var text = tsi.Text?[3..].Trim() ?? string.Empty;
                 tsi.Enabled = Enum.TryParse(text.Replace(" ", "").Replace("&", "And"), out BotControlCommand cmd)
                     ? cmd.IsUsable(bot.IsRunning, bot.IsPaused)
                     : !bot.IsRunning;
@@ -167,7 +167,10 @@ namespace SysBot.Pokemon.WinForms
 
         public void ReloadStatus()
         {
-            var bot = GetBot().Bot;
+            var botSource = GetBot();
+            if (botSource == null)
+                return;
+            var bot = botSource.Bot;
             lblBotName.Text = bot.Connection.Name;
             lblRoutineType.Visible = false;
             L_Left.Text = $"{bot.Connection.Name}\n{State.InitialRoutine}";
@@ -274,13 +277,13 @@ namespace SysBot.Pokemon.WinForms
         public void TryRemove()
         {
             var bot = GetBot();
-            if (!Runner!.Config.SkipConsoleBotCreation)
+            if (!Runner!.Config.SkipConsoleBotCreation && bot != null)
                 bot.Stop();
 
             Remove?.Invoke(this, EventArgs.Empty);
         }
 
-        public void SendCommand(BotControlCommand cmd, bool echo = true)
+        public void SendCommand(BotControlCommand cmd, bool _ = true)
         {
             if (Runner?.Config.SkipConsoleBotCreation != false)
             {
@@ -437,7 +440,7 @@ namespace SysBot.Pokemon.WinForms
             }
         }
 
-        public BotSource<PokeBotState> GetBot()
+        public BotSource<PokeBotState>? GetBot()
         {
             try
             {
@@ -489,6 +492,8 @@ namespace SysBot.Pokemon.WinForms
         public void ReadState()
         {
             var bot = GetBot();
+            if (bot == null)
+                return;
 
             if (InvokeRequired)
             {
@@ -508,10 +513,8 @@ namespace SysBot.Pokemon.WinForms
 
             var rect = ClientRectangle;
 
-            using (var brush = new SolidBrush(CuztomBackground))
-            {
-                g.FillRectangle(brush, rect);
-            }
+            using var brush = new SolidBrush(CuztomBackground);
+            g.FillRectangle(brush, rect);
         }
 
         private void MainPanel_Paint(object sender, PaintEventArgs e)
@@ -520,29 +523,21 @@ namespace SysBot.Pokemon.WinForms
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             var rect = mainPanel.ClientRectangle;
-            using (var path = new GraphicsPath())
+            using var path = new GraphicsPath();
+            GraphicsExtensions.AddRoundedRectangle(path, rect, 4);
+
+            using var brush = new SolidBrush(CuztomDarkBackground);
+            g.FillPath(brush, path);
+
+            if (hoverProgress > 0)
             {
-                GraphicsExtensions.AddRoundedRectangle(path, rect, 4);
-
-                using (var brush = new SolidBrush(CuztomDarkBackground))
-                {
-                    g.FillPath(brush, path);
-                }
-
-                if (hoverProgress > 0)
-                {
-                    using (var pen = new Pen(Color.FromArgb((int)(80 * hoverProgress), CuztomAccent), 2))
-                    {
-                        g.DrawPath(pen, path);
-                    }
-                }
-                else
-                {
-                    using (var pen = new Pen(Color.FromArgb(12, 20, 28), 1))
-                    {
-                        g.DrawPath(pen, path);
-                    }
-                }
+                using var pen = new Pen(Color.FromArgb((int)(80 * hoverProgress), CuztomAccent), 2);
+                g.DrawPath(pen, path);
+            }
+            else
+            {
+                using var pen = new Pen(Color.FromArgb(12, 20, 28), 1);
+                g.DrawPath(pen, path);
             }
         }
 
@@ -550,10 +545,8 @@ namespace SysBot.Pokemon.WinForms
         {
             var g = e.Graphics;
 
-            using (var pen = new Pen(Color.FromArgb(12, 20, 28), 1))
-            {
-                g.DrawLine(pen, 0, 0, bottomPanel.Width, 0);
-            }
+            using var pen = new Pen(Color.FromArgb(12, 20, 28), 1);
+            g.DrawLine(pen, 0, 0, bottomPanel.Width, 0);
         }
 
         private void StatusIndicator_Paint(object sender, PaintEventArgs e)
@@ -562,7 +555,8 @@ namespace SysBot.Pokemon.WinForms
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.CompositingQuality = CompositingQuality.HighQuality;
 
-            var control = sender as PictureBox;
+            if (sender is not PictureBox control)
+                return;
             var fullRect = control.ClientRectangle;
 
             var centerX = fullRect.Width / 2f;
@@ -589,17 +583,13 @@ namespace SysBot.Pokemon.WinForms
                             ringSize
                         );
 
-                        using (var glowPath = new GraphicsPath())
-                        {
-                            glowPath.AddEllipse(ringRect);
-                            using (var glowBrush = new PathGradientBrush(glowPath))
-                            {
-                                glowBrush.CenterColor = Color.FromArgb(ringAlpha, currentStatusColor);
-                                glowBrush.SurroundColors = new[] { Color.FromArgb(0, currentStatusColor) };
-                                glowBrush.CenterPoint = new PointF(centerX, centerY);
-                                g.FillEllipse(glowBrush, ringRect);
-                            }
-                        }
+                        using var glowPath = new GraphicsPath();
+                        glowPath.AddEllipse(ringRect);
+                        using var glowBrush = new PathGradientBrush(glowPath);
+                        glowBrush.CenterColor = Color.FromArgb(ringAlpha, currentStatusColor);
+                        glowBrush.SurroundColors = [Color.FromArgb(0, currentStatusColor)];
+                        glowBrush.CenterPoint = new PointF(centerX, centerY);
+                        g.FillEllipse(glowBrush, ringRect);
                     }
                 }
 
@@ -612,37 +602,27 @@ namespace SysBot.Pokemon.WinForms
                 );
                 var innerAlpha = (int)(70 + (50 * basePulse));
 
-                using (var innerGlowPath = new GraphicsPath())
-                {
-                    innerGlowPath.AddEllipse(innerGlowRect);
-                    using (var innerGlowBrush = new PathGradientBrush(innerGlowPath))
-                    {
-                        innerGlowBrush.CenterColor = Color.FromArgb(innerAlpha, currentStatusColor);
-                        innerGlowBrush.SurroundColors = new[] { Color.FromArgb(0, currentStatusColor) };
-                        innerGlowBrush.CenterPoint = new PointF(centerX, centerY);
-                        g.FillEllipse(innerGlowBrush, innerGlowRect);
-                    }
-                }
+                using var innerGlowPath = new GraphicsPath();
+                innerGlowPath.AddEllipse(innerGlowRect);
+                using var innerGlowBrush = new PathGradientBrush(innerGlowPath);
+                innerGlowBrush.CenterColor = Color.FromArgb(innerAlpha, currentStatusColor);
+                innerGlowBrush.SurroundColors = [Color.FromArgb(0, currentStatusColor)];
+                innerGlowBrush.CenterPoint = new PointF(centerX, centerY);
+                g.FillEllipse(innerGlowBrush, innerGlowRect);
             }
 
-            using (var corePath = new GraphicsPath())
-            {
-                corePath.AddEllipse(coreRect);
+            using var corePath = new GraphicsPath();
+            corePath.AddEllipse(coreRect);
 
-                using (var coreGradient = new LinearGradientBrush(
-                    coreRect,
-                    Color.FromArgb(255, Math.Min(255, currentStatusColor.R + 40), Math.Min(255, currentStatusColor.G + 40), Math.Min(255, currentStatusColor.B + 40)),
-                    currentStatusColor,
-                    LinearGradientMode.Vertical))
-                {
-                    g.FillEllipse(coreGradient, coreRect);
-                }
+            using var coreGradient = new LinearGradientBrush(
+                coreRect,
+                Color.FromArgb(255, Math.Min(255, currentStatusColor.R + 40), Math.Min(255, currentStatusColor.G + 40), Math.Min(255, currentStatusColor.B + 40)),
+                currentStatusColor,
+                LinearGradientMode.Vertical);
+            g.FillEllipse(coreGradient, coreRect);
 
-                using (var borderPen = new Pen(Color.FromArgb(180, 255, 255, 255), 0.5f))
-                {
-                    g.DrawEllipse(borderPen, coreRect);
-                }
-            }
+            using var borderPen = new Pen(Color.FromArgb(180, 255, 255, 255), 0.5f);
+            g.DrawEllipse(borderPen, coreRect);
 
             var highlightSize = 3f;
             var highlightRect = new RectangleF(
@@ -652,7 +632,7 @@ namespace SysBot.Pokemon.WinForms
                 highlightSize
             );
 
-            using (var highlightBrush = new SolidBrush(Color.FromArgb(160, 255, 255, 255)))
+            using var highlightBrush = new SolidBrush(Color.FromArgb(160, 255, 255, 255));
             {
                 g.FillEllipse(highlightBrush, highlightRect);
             }
@@ -663,14 +643,13 @@ namespace SysBot.Pokemon.WinForms
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            var btn = sender as Button;
+            if (sender is not Button btn)
+                return;
             var rect = btn.ClientRectangle;
 
-            using (var path = new GraphicsPath())
-            {
-                GraphicsExtensions.AddRoundedRectangle(path, rect, 3);
-                btn.Region = new Region(path);
-            }
+            using var path = new GraphicsPath();
+            GraphicsExtensions.AddRoundedRectangle(path, rect, 3);
+            btn.Region = new Region(path);
         }
 
         private void BtnActions_Click(object sender, EventArgs e)
@@ -725,10 +704,7 @@ namespace SysBot.Pokemon.WinForms
                 btnActions.BackColor = CuztomAccent;
             }
 
-            if (statusIndicator != null)
-            {
-                statusIndicator.Invalidate();
-            }
+            statusIndicator?.Invalidate();
         }
 
         private class CuztomMenuRenderer : ToolStripProfessionalRenderer
@@ -739,8 +715,8 @@ namespace SysBot.Pokemon.WinForms
             {
                 var rc = new Rectangle(Point.Empty, e.Item.Size);
                 var c = e.Item.Selected ? Color.FromArgb(46, 61, 83) : Color.FromArgb(27, 40, 56);
-                using (var brush = new SolidBrush(c))
-                    e.Graphics.FillRectangle(brush, rc);
+                using var brush = new SolidBrush(c);
+                e.Graphics.FillRectangle(brush, rc);
             }
 
             protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)

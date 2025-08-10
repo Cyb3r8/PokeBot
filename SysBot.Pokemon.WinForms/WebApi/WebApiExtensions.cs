@@ -59,6 +59,20 @@ public static class WebApiExtensions
                 }
                 StartTcpOnly();
                 LogUtil.LogInfo($"Slave instance started with TCP port {_tcpPort}. Monitoring master...", "WebServer");
+                
+                // Verify TCP is working
+                Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    if (_tcp?.Server?.IsBound != true)
+                    {
+                        LogUtil.LogError($"TCP server failed to bind to port {_tcpPort}", "WebServer");
+                    }
+                    else
+                    {
+                        LogUtil.LogInfo($"TCP server successfully bound to port {_tcpPort}", "WebServer");
+                    }
+                });
 
                 StartMasterMonitor();
                 StartScheduledRestartTimer();
@@ -237,16 +251,31 @@ public static class WebApiExtensions
 
             _server = new BotServer(_main!, WebPort, _tcpPort);
             _server.Start();
-
-            _monitorCts?.Cancel();
-            _monitorCts = null;
-
-            LogUtil.LogInfo($"Successfully took over as master web server on port {WebPort}", "WebServer");
-            LogUtil.LogInfo($"Web interface is now available at http://localhost:{WebPort}", "WebServer");
+            
+            // Verify takeover was successful
+            Task.Run(async () =>
+            {
+                await Task.Delay(2000);
+                if (!await VerifyServerHealth())
+                {
+                    LogUtil.LogError("Master takeover failed health check", "WebServer");
+                    _server?.Stop();
+                    _server = null;
+                    StartMasterMonitor(); // Continue monitoring
+                    return;
+                }
+                
+                _monitorCts?.Cancel();
+                _monitorCts = null;
+                LogUtil.LogInfo($"Successfully took over as master web server on port {WebPort}", "WebServer");
+                LogUtil.LogInfo($"Web interface is now available at http://localhost:{WebPort}", "WebServer");
+            });
         }
         catch (Exception ex)
         {
             LogUtil.LogError($"Failed to take over as master: {ex.Message}", "WebServer");
+            _server?.Stop();
+            _server = null;
             StartMasterMonitor();
         }
     }
@@ -275,6 +304,22 @@ public static class WebApiExtensions
             return false;
         }
     }
+    
+    private static async Task<bool> VerifyServerHealth()
+    {
+        try
+        {
+            using var client = new System.Net.Http.HttpClient();
+            client.Timeout = TimeSpan.FromSeconds(5);
+            
+            var response = await client.GetAsync($"http://localhost:{WebPort}/api/bot/instances");
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     private static void StartTcpOnly()
     {
@@ -290,12 +335,48 @@ public static class WebApiExtensions
             _server.Start();
             StartTcp();
             CreatePortFile();
+            
+            // Verify server is actually responding
+            Task.Run(async () =>
+            {
+                await Task.Delay(2000); // Give server time to start
+                if (!await VerifyServerHealth())
+                {
+                    LogUtil.LogError("Web server failed health check after startup", "WebServer");
+                    // Attempt restart
+                    try
+                    {
+                        _server?.Stop();
+                        await Task.Delay(1000);
+                        _server = new BotServer(_main!, WebPort, _tcpPort);
+                        _server.Start();
+                        LogUtil.LogInfo("Web server restarted successfully", "WebServer");
+                    }
+                    catch (Exception restartEx)
+                    {
+                        LogUtil.LogError($"Failed to restart web server: {restartEx.Message}", "WebServer");
+                    }
+                }
+            });
         }
         catch (Exception ex) when (ex.Message.Contains("conflicts with an existing registration"))
         {
             // Another instance became master first - gracefully become a slave
             LogUtil.LogInfo("Port 8080 conflict during startup, starting as slave", "WebServer");
             StartTcpOnly();  // This will create the port file as a slave
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Failed to start full web server: {ex.Message}. Attempting fallback to slave mode.", "WebServer");
+            try
+            {
+                StartTcpOnly();
+                StartMasterMonitor(); // Try to become master later
+            }
+            catch (Exception fallbackEx)
+            {
+                LogUtil.LogError($"Fallback to slave mode also failed: {fallbackEx.Message}", "WebServer");
+            }
         }
     }
 

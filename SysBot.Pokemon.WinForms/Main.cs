@@ -463,27 +463,55 @@ namespace SysBot.Pokemon.WinForms
 
         private async void Updater_Click(object sender, EventArgs e)
         {
-            var (updateAvailable, updateRequired, newVersion) = await UpdateChecker.CheckForUpdatesAsync();
-            hasUpdate = updateAvailable;
-
-            if (!updateAvailable)
+            try
             {
-                var result = MessageBox.Show(
-                    "You are on the latest version. Would you like to re-download the current version?",
-                    "Update Check",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
+                var (updateAvailable, updateRequired, newVersion) = await UpdateChecker.CheckForUpdatesAsync();
+                hasUpdate = updateAvailable;
 
-                if (result == DialogResult.Yes)
+                if (!updateAvailable)
                 {
-                    UpdateForm updateForm = new(updateRequired, newVersion, updateAvailable: false);
-                    updateForm.ShowDialog();
+                    var result = MessageBox.Show(
+                        "You are on the latest version. Would you like to re-download the current version?",
+                        "Update Check",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        // Use automatic update instead of dialog
+                        WinFormsUtil.Alert("Starting automatic update. The application will restart when complete.");
+                        
+                        // Trigger automatic update
+                        _ = Task.Run(async () =>
+                        {
+                            await UpdateManager.PerformAutomaticUpdate("PokeBot", newVersion ?? "latest");
+                        });
+                    }
+                }
+                else
+                {
+                    // Show available update info and start automatic update
+                    var result = MessageBox.Show(
+                        $"Update available: {newVersion}\n\nStart automatic update now?",
+                        "Update Available",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question);
+                        
+                    if (result == DialogResult.Yes)
+                    {
+                        WinFormsUtil.Alert("Starting automatic update. The application will restart when complete.");
+                        
+                        // Trigger automatic update
+                        _ = Task.Run(async () =>
+                        {
+                            await UpdateManager.PerformAutomaticUpdate("PokeBot", newVersion ?? "latest");
+                        });
+                    }
                 }
             }
-            else
+            catch (Exception ex)
             {
-                UpdateForm updateForm = new(updateRequired, newVersion, updateAvailable: true);
-                updateForm.ShowDialog();
+                WinFormsUtil.Error($"Update check failed: {ex.Message}");
             }
         }
 

@@ -21,10 +21,18 @@ namespace SysBot.Pokemon.WinForms
             bool updateRequired = latestRelease?.Prerelease == false && IsUpdateRequired(latestRelease?.Body);
             string? newVersion = latestRelease?.TagName;
 
-            if (updateAvailable || forceShow)
+            // Only show update dialog if explicitly forced (manual button click)
+            // Automatic updates via web interface handle updates without dialogs
+            if ((updateAvailable || forceShow) && forceShow)
             {
+                // Only show dialog for manual update checks, not automatic startup checks
                 var updateForm = new UpdateForm(updateRequired, newVersion ?? "", updateAvailable);
                 updateForm.ShowDialog();
+            }
+            else if (updateAvailable && !forceShow)
+            {
+                // Log automatic update detection without showing dialog
+                Console.WriteLine($"Update available: {newVersion}. Use web interface or manual update button to upgrade.");
             }
 
             return (updateAvailable, updateRequired, newVersion ?? string.Empty);

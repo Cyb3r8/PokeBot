@@ -137,7 +137,8 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
 
                 var context = _listener.EndGetContext(asyncResult);
 
-                ThreadPool.QueueUserWorkItem(async _ =>
+                // Use Task.Run instead of ThreadPool for better async handling
+                _ = Task.Run(async () =>
                 {
                     try
                     {
@@ -145,7 +146,28 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                     }
                     catch (Exception ex)
                     {
-                        LogUtil.LogError($"Error handling request: {ex.Message}", "WebServer");
+                        LogUtil.LogError($"Error handling request {context.Request.Url}: {ex.Message}", "WebServer");
+                        
+                        // Try to send error response if possible
+                        try
+                        {
+                            if (!context.Response.OutputStream.CanWrite) return;
+                            
+                            var errorResponse = CreateErrorResponse($"Request handling failed: {ex.Message}");
+                            var errorBuffer = System.Text.Encoding.UTF8.GetBytes(errorResponse);
+                            
+                            context.Response.StatusCode = 500;
+                            context.Response.ContentType = "application/json";
+                            context.Response.ContentLength64 = errorBuffer.Length;
+                            
+                            await context.Response.OutputStream.WriteAsync(errorBuffer, 0, errorBuffer.Length);
+                            await context.Response.OutputStream.FlushAsync();
+                        }
+                        catch { /* Ignore errors when sending error response */ }
+                        finally
+                        {
+                            try { context.Response.Close(); } catch { }
+                        }
                     }
                 });
             }
@@ -161,7 +183,17 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             {
                 if (_running)
                 {
-                    LogUtil.LogError($"Error in listener: {ex.Message}", "WebServer");
+                    LogUtil.LogError($"Error in listener (will retry): {ex.Message}", "WebServer");
+                    
+                    // Wait before retrying, but check if we should still be running
+                    for (int i = 0; i < 10 && _running; i++)
+                    {
+                        Thread.Sleep(100);
+                    }
+                }
+                else
+                {
+                    break;
                 }
             }
         }
@@ -519,28 +551,52 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         {
             var instances = new List<object>();
 
-            var localBots = GetBotControllers();
+            // Get local bots with error handling
+            var localBots = new List<BotController>();
             var localIdleCount = 0;
-            var localTotalCount = localBots.Count;
+            var localTotalCount = 0;
             var localNonIdleBots = new List<object>();
-
-            foreach (var controller in localBots)
+            
+            try
             {
-                var status = controller.ReadBotState();
-                var upperStatus = status?.ToUpper() ?? "";
-
-                if (upperStatus == "IDLE" || upperStatus == "STOPPED")
+                localBots = GetBotControllers();
+                localTotalCount = localBots.Count;
+                
+                foreach (var controller in localBots)
                 {
-                    localIdleCount++;
-                }
-                else
-                {
-                    localNonIdleBots.Add(new
+                    try
                     {
-                        Name = GetBotName(controller.State, GetConfig()),
-                        Status = status
-                    });
+                        var status = controller.ReadBotState();
+                        var upperStatus = status?.ToUpper() ?? "";
+
+                        if (upperStatus == "IDLE" || upperStatus == "STOPPED")
+                        {
+                            localIdleCount++;
+                        }
+                        else
+                        {
+                            localNonIdleBots.Add(new
+                            {
+                                Name = GetBotName(controller.State, GetConfig()),
+                                Status = status
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogError($"Error reading bot controller state: {ex.Message}", "WebServer");
+                        // Count as non-idle if we can't read status
+                        localNonIdleBots.Add(new
+                        {
+                            Name = "Unknown",
+                            Status = "ERROR"
+                        });
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Error getting bot controllers: {ex.Message}", "WebServer");
             }
 
             instances.Add(new
@@ -553,13 +609,18 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 AllIdle = localIdleCount == localTotalCount
             });
 
-            var remoteInstances = ScanRemoteInstances().Where(i => i.IsOnline);
-            foreach (var instance in remoteInstances)
+            // Get remote instances with error handling
+            try
             {
-                var botsResponse = QueryRemote(instance.Port, "LISTBOTS");
-                if (botsResponse.StartsWith("{") && botsResponse.Contains("Bots"))
+                var remoteInstances = ScanRemoteInstances()?.Where(i => i.IsOnline) ?? Enumerable.Empty<dynamic>();
+                foreach (var instance in remoteInstances)
                 {
                     try
+                    {
+                        var botsResponse = QueryRemote(instance.Port, "LISTBOTS");
+                        if (botsResponse.StartsWith("{") && botsResponse.Contains("Bots"))
+                        {
+                            try
                     {
                         var botsData = JsonSerializer.Deserialize<Dictionary<string, List<Dictionary<string, object>>>>(botsResponse);
                         if (botsData?.ContainsKey("Bots") == true)
@@ -598,26 +659,53 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                                 AllIdle = idleCount == bots.Count
                             });
                         }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogUtil.LogError($"Error parsing remote bots response from port {instance.Port}: {ex.Message}", "WebServer");
+                        }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogError($"Error querying remote instance on port {instance.Port}: {ex.Message}", "WebServer");
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Error scanning remote instances: {ex.Message}", "WebServer");
+            }
 
-            var totalBots = instances.Sum(i => (int)((dynamic)i).TotalBots);
-            var totalIdle = instances.Sum(i => (int)((dynamic)i).IdleBots);
-            var allInstancesIdle = instances.All(i => (bool)((dynamic)i).AllIdle);
+            // Calculate totals with error handling
+            var totalBots = 0;
+            var totalIdle = 0;
+            var allInstancesIdle = true;
+            
+            try
+            {
+                totalBots = instances.Sum(i => (int)((dynamic)i).TotalBots);
+                totalIdle = instances.Sum(i => (int)((dynamic)i).IdleBots);
+                allInstancesIdle = instances.All(i => (bool)((dynamic)i).AllIdle);
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Error calculating bot totals: {ex.Message}", "WebServer");
+            }
 
             return JsonSerializer.Serialize(new
             {
                 Instances = instances,
                 TotalBots = totalBots,
                 TotalIdleBots = totalIdle,
-                AllBotsIdle = allInstancesIdle
+                AllBotsIdle = allInstancesIdle,
+                Timestamp = DateTime.Now,
+                Success = true
             });
         }
         catch (Exception ex)
         {
-            return CreateErrorResponse(ex.Message);
+            LogUtil.LogError($"Critical error in GetIdleStatus: {ex.Message}", "WebServer");
+            return CreateErrorResponse($"Failed to get idle status: {ex.Message}");
         }
     }
 
@@ -746,7 +834,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         }
         catch { }
 
-        var name = config?.Hub?.BotName ?? (botType == "RaidBot" ? "SVRaidBot" : "PokeBot");
+        var name = GetMainBotName(config);
         
         // Add Master Dashboard indicator to name if this is the master node
         if (tailscaleConfig?.Enabled == true && tailscaleConfig.IsMasterNode)
@@ -1134,7 +1222,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 BotCount = 0,
                 IsOnline = true,
                 IsRemote = ip != "127.0.0.1",
-                BotType = "Unknown"
+                BotType = "PokeBot" // Default to PokeBot instead of Unknown
             };
 
             UpdateInstanceInfo(instance, ip, port);
@@ -1174,7 +1262,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 // Try to get BotType from the INFO response
                 if (root.TryGetProperty("BotType", out var botType))
                 {
-                    instance.BotType = botType.GetString() ?? "Unknown";
+                    instance.BotType = botType.GetString() ?? "PokeBot"; // Default to PokeBot instead of Unknown
                 }
                 else
                 {
@@ -1487,7 +1575,44 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
 
     private static string GetBotName(PokeBotState state, ProgramConfig? config)
     {
-        return state.Connection.IP;
+        // Try to get a meaningful bot name instead of just IP
+        
+        // Option 1: Use Hub BotName if available
+        if (!string.IsNullOrEmpty(config?.Hub?.BotName))
+        {
+            // If multiple bots, differentiate by IP suffix
+            var ipSuffix = state.Connection.IP.Split('.').LastOrDefault();
+            return $"{config.Hub.BotName}-{ipSuffix}";
+        }
+        
+        // Option 2: Use routine type + IP suffix
+        var routineName = state.InitialRoutine.ToString();
+        var suffix = state.Connection.IP.Split('.').LastOrDefault() ?? state.Connection.Port.ToString();
+        
+        // Simplify routine names
+        var simplifiedRoutine = routineName switch
+        {
+            var r when r.Contains("Trade") => "Trade",
+            var r when r.Contains("Dump") => "Dump", 
+            var r when r.Contains("Clone") => "Clone",
+            var r when r.Contains("Encounter") => "Encounter",
+            var r when r.Contains("Egg") => "Egg",
+            var r when r.Contains("Fossil") => "Fossil",
+            _ => "Bot"
+        };
+        
+        return $"PokeBot-{simplifiedRoutine}-{suffix}";
+    }
+    
+    private static string GetMainBotName(ProgramConfig? config)
+    {
+        // Get name for the main bot instance (not individual bots)
+        if (!string.IsNullOrEmpty(config?.Hub?.BotName))
+        {
+            return config.Hub.BotName;
+        }
+        
+        return "PokeBot";
     }
 
     private static string CreateErrorResponse(string message)

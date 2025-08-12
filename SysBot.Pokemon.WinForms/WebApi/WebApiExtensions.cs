@@ -407,7 +407,12 @@ public static class WebApiExtensions
                         var completedTask = await Task.WhenAny(tcpTask, tcs.Task);
                         if (completedTask == tcpTask && tcpTask.IsCompletedSuccessfully)
                         {
-                            _ = Task.Run(() => HandleClient(tcpTask.Result));
+                            var client = tcpTask.Result;
+                            _ = Task.Run(async () =>
+                            {
+                                try { await HandleClient(client); }
+                                catch (Exception ex) { LogUtil.LogError($"Unhandled TCP client error: {ex.Message}", "TCP"); }
+                            });
                         }
                     }
                     break; // Success, exit retry loop
@@ -486,6 +491,7 @@ public static class WebApiExtensions
 
         return cmd switch
         {
+            // Global commands (ALL suffix)
             "STARTALL" => ExecuteGlobalCommand(BotControlCommand.Start),
             "STOPALL" => ExecuteGlobalCommand(BotControlCommand.Stop),
             "IDLEALL" => ExecuteGlobalCommand(BotControlCommand.Idle),
@@ -495,13 +501,25 @@ public static class WebApiExtensions
             "SCREENONALL" => ExecuteGlobalCommand(BotControlCommand.ScreenOnAll),
             "SCREENOFFALL" => ExecuteGlobalCommand(BotControlCommand.ScreenOffAll),
             "REFRESHMAPALL" => HandleRefreshMapAllCommand(),
+            "SELFRESTARTALL" => TriggerSelfRestart(),
+            
+            // Individual bot commands (no ALL suffix)
+            "START" => ExecuteGlobalCommand(BotControlCommand.Start),
+            "STOP" => ExecuteGlobalCommand(BotControlCommand.Stop),
+            "IDLE" => ExecuteGlobalCommand(BotControlCommand.Idle),
+            "RESUME" => ExecuteGlobalCommand(BotControlCommand.Resume),
+            "RESTART" => ExecuteGlobalCommand(BotControlCommand.Restart),
+            "REBOOT" => ExecuteGlobalCommand(BotControlCommand.RebootAndStop),
+            "SCREENON" => ExecuteGlobalCommand(BotControlCommand.ScreenOnAll),
+            "SCREENOFF" => ExecuteGlobalCommand(BotControlCommand.ScreenOffAll),
+            
+            // System commands
             "LISTBOTS" => GetBotsList(),
             "STATUS" => GetBotStatuses(botId),
             "ISREADY" => CheckReady(),
             "INFO" => GetInstanceInfo(),
             "VERSION" => GetVersionForBotType(DetectBotType()),
             "UPDATE" => TriggerUpdate(),
-            "SELFRESTARTALL" => TriggerSelfRestart(),
             _ => $"ERROR: Unknown command '{cmd}'"
         };
     }
@@ -1124,10 +1142,15 @@ public static class WebApiExtensions
 
         try
         {
-            var processes = Process.GetProcessesByName("PokeBot")
+            // Look for both PokeBot and SVRaidBot processes
+            var pokeBotProcesses = Process.GetProcessesByName("PokeBot")
                 .Where(p => p.Id != Environment.ProcessId);
+            var raidBotProcesses = Process.GetProcessesByName("SVRaidBot")
+                .Where(p => p.Id != Environment.ProcessId);
+            
+            var allProcesses = pokeBotProcesses.Concat(raidBotProcesses);
 
-            foreach (var process in processes)
+            foreach (var process in allProcesses)
             {
                 try
                 {
@@ -1135,8 +1158,14 @@ public static class WebApiExtensions
                     if (string.IsNullOrEmpty(exePath))
                         continue;
 
-                    var portFile = Path.Combine(Path.GetDirectoryName(exePath)!, $"PokeBot_{process.Id}.port");
-                    if (!File.Exists(portFile))
+                    // Check for both PokeBot and SVRaidBot port files
+                    var pokeBotPortFile = Path.Combine(Path.GetDirectoryName(exePath)!, $"PokeBot_{process.Id}.port");
+                    var raidBotPortFile = Path.Combine(Path.GetDirectoryName(exePath)!, $"SVRaidBot_{process.Id}.port");
+                    
+                    var portFile = File.Exists(pokeBotPortFile) ? pokeBotPortFile : 
+                                  File.Exists(raidBotPortFile) ? raidBotPortFile : null;
+                    
+                    if (portFile == null)
                         continue;
 
                     var portText = File.ReadAllText(portFile).Trim();

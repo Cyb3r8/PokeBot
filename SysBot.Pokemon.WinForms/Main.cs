@@ -5,6 +5,7 @@ using SysBot.Pokemon.Helpers;
 using SysBot.Pokemon.WinForms.Properties;
 using SysBot.Pokemon.WinForms.Controls;
 using SysBot.Pokemon.WinForms.Helpers;
+using SysBot.Pokemon.WinForms.WebApi;
 using SysBot.Pokemon.Z3;
 using System;
 using System.Collections.Generic;

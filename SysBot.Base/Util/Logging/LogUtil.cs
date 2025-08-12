@@ -17,6 +17,14 @@ public static class LogUtil
     public static readonly List<ILogForwarder> Forwarders = [];
 
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly HashSet<string> SuppressedIdentities = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "TCP",
+    };
+
+    private static bool ShouldSuppress(string identity, string message)
+        => SuppressedIdentities.Contains(identity) ||
+           message.Contains("tcp", StringComparison.OrdinalIgnoreCase);
 
     static LogUtil()
     {
@@ -48,12 +56,16 @@ public static class LogUtil
 
     public static void LogError(string message, string identity)
     {
+        if (ShouldSuppress(identity, message))
+            return;
         Logger.Log(LogLevel.Error, $"{identity} {message}");
         Log(message, identity);
     }
 
     public static void LogInfo(string message, string identity)
     {
+        if (ShouldSuppress(identity, message))
+            return;
         Logger.Log(LogLevel.Info, $"{identity} {message}");
         Log(message, identity);
     }

@@ -1721,7 +1721,7 @@ class UpdateManager {
             document.getElementById('new-version').textContent = 'Checking...';
             document.getElementById('changelog-content').innerHTML = '<div class="spinner"></div>';
 
-            const checkResponse = await fetch(`${this.app.api.baseUrl}/update/check`);
+            const checkResponse = await fetch(this.app.api.endpoints.updateCheck);
             let updateInfo = { version: 'Unknown', changelog: 'No changelog available' };
 
             if (checkResponse.ok) {

@@ -11,6 +11,8 @@ using SysBot.Base;
 using System.Diagnostics;
 using SysBot.Pokemon.Helpers;
 using SysBot.Pokemon.WinForms.WebApi;
+using static SysBot.Pokemon.WinForms.WebApi.RestartManager;
+using System.Collections.Concurrent;
 
 namespace SysBot.Pokemon.WinForms;
 
@@ -21,16 +23,45 @@ public static class WebApiExtensions
     private static CancellationTokenSource? _cts;
     private static CancellationTokenSource? _monitorCts;
     private static Main? _main;
-    private static System.Threading.Timer? _scheduleTimer;
 
-    private const int WebPort = 2305;
+    private static int _webPort = 8080; // Will be set from config
     private static int _tcpPort = 0;
     private static readonly object _portLock = new object();
-    private static readonly Dictionary<int, DateTime> _portReservations = new();
+    private static readonly ConcurrentDictionary<int, DateTime> _portReservations = new();
 
     public static void InitWebServer(this Main mainForm)
     {
         _main = mainForm;
+
+        // Get the configured port from settings
+        if (mainForm.Config?.Hub?.WebServer != null)
+        {
+            _webPort = mainForm.Config.Hub.WebServer.ControlPanelPort;
+
+            // Validate port range
+            if (_webPort < 1 || _webPort > 65535)
+            {
+                LogUtil.LogError($"Invalid web server port {_webPort}. Using default port 8080.", "WebServer");
+                _webPort = 8080;
+            }
+
+            // Update the UpdateManager with the configured port
+            UpdateManager.SetConfiguredWebPort(_webPort);
+
+            // Check if web server is enabled
+            if (!mainForm.Config.Hub.WebServer.EnableWebServer)
+            {
+                LogUtil.LogInfo("Web Control Panel is disabled in settings.", "WebServer");
+                return;
+            }
+
+            LogUtil.LogInfo($"Web Control Panel will be hosted on port {_webPort}", "WebServer");
+        }
+        else
+        {
+            // No config available, use default and update UpdateManager
+            UpdateManager.SetConfiguredWebPort(_webPort);
+        }
 
         try
         {
@@ -38,7 +69,7 @@ public static class WebApiExtensions
 
             CheckPostRestartStartup(mainForm);
 
-            if (IsPortInUse(WebPort))
+            if (IsPortInUse(_webPort))
             {
                 lock (_portLock)
                 {
@@ -48,11 +79,23 @@ public static class WebApiExtensions
                 StartTcpOnly();
 
                 StartMasterMonitor();
-                StartScheduledRestartTimer();
+                RestartManager.Initialize(mainForm, _tcpPort);
+                // Check for any pending update state and attempt to resume
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(10000); // Wait for system to stabilize
+                    var currentState = UpdateManager.GetCurrentState();
+                    if (currentState != null && !currentState.IsComplete)
+                    {
+                        LogUtil.LogInfo($"Found incomplete update session {currentState.SessionId}, attempting to resume", "WebServer");
+                        await UpdateManager.StartOrResumeUpdateAsync(mainForm, _tcpPort);
+                    }
+                });
+
                 return;
             }
 
-            TryAddUrlReservation(WebPort);
+            TryAddUrlReservation(_webPort);
 
             lock (_portLock)
             {
@@ -61,7 +104,28 @@ public static class WebApiExtensions
             }
             StartFullServer();
 
-            StartScheduledRestartTimer();
+            RestartManager.Initialize(mainForm, _tcpPort);
+            // Check for any pending update state and attempt to resume
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(10000); // Wait for system to stabilize
+                var currentState = UpdateManager.GetCurrentState();
+                if (currentState != null && !currentState.IsComplete)
+                {
+                    LogUtil.LogInfo($"Found incomplete update session {currentState.SessionId}, attempting to resume", "WebServer");
+                    await UpdateManager.StartOrResumeUpdateAsync(mainForm, _tcpPort);
+                }
+            });
+
+            // Periodically clean up completed update sessions
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(30));
+                    UpdateManager.ClearState();
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -76,7 +140,7 @@ public static class WebApiExtensions
 
     private static void ReleasePort(int port)
     {
-        _portReservations.Remove(port);
+        _portReservations.TryRemove(port, out _);
     }
 
     private static void CleanupStalePortFiles()
@@ -87,14 +151,15 @@ public static class WebApiExtensions
             var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
 
             // Also clean up stale port reservations (older than 5 minutes)
+            var now = DateTime.Now;
             var staleReservations = _portReservations
-                .Where(kvp => (DateTime.Now - kvp.Value).TotalMinutes > 5)
+                .Where(kvp => (now - kvp.Value).TotalMinutes > 5)
                 .Select(kvp => kvp.Key)
                 .ToList();
 
             foreach (var port in staleReservations)
             {
-                _portReservations.Remove(port);
+                _portReservations.TryRemove(port, out _);
             }
 
             var portFiles = Directory.GetFiles(exeDir, "PokeBot_*.port");
@@ -154,18 +219,18 @@ public static class WebApiExtensions
                 {
                     await Task.Delay(10000 + random.Next(5000), _monitorCts.Token);
 
-                    if (UpdateManager.IsSystemUpdateInProgress || UpdateManager.IsSystemRestartInProgress)
+                    if (UpdateManager.IsUpdateInProgress() || RestartManager.IsRestartInProgress)
                     {
                         continue;
                     }
 
-                    if (!IsPortInUse(WebPort))
+                    if (!IsPortInUse(_webPort))
                     {
                         LogUtil.LogInfo("Master web server is down. Attempting to take over...", "WebServer");
 
                         await Task.Delay(random.Next(1000, 3000));
 
-                        if (!IsPortInUse(WebPort) && !UpdateManager.IsSystemUpdateInProgress && !UpdateManager.IsSystemRestartInProgress)
+                        if (!IsPortInUse(_webPort) && !UpdateManager.IsUpdateInProgress() && !RestartManager.IsRestartInProgress)
                         {
                             TryTakeOverAsMaster();
                             break;
@@ -184,16 +249,16 @@ public static class WebApiExtensions
     {
         try
         {
-            TryAddUrlReservation(WebPort);
+            TryAddUrlReservation(_webPort);
 
-            _server = new BotServer(_main!, WebPort, _tcpPort);
+            _server = new BotServer(_main!, _webPort, _tcpPort);
             _server.Start();
 
             _monitorCts?.Cancel();
             _monitorCts = null;
 
-            LogUtil.LogInfo($"Successfully took over as master web server on port {WebPort}", "WebServer");
-            LogUtil.LogInfo($"Web interface is now available at http://localhost:{WebPort}", "WebServer");
+            LogUtil.LogInfo($"Successfully took over as master web server on port {_webPort}", "WebServer");
+            LogUtil.LogInfo($"Web interface is now available at http://localhost:{_webPort}", "WebServer");
         }
         catch (Exception ex)
         {
@@ -230,6 +295,9 @@ public static class WebApiExtensions
     private static void StartTcpOnly()
     {
         StartTcp();
+
+        // Slaves no longer need their own web server - logs are read directly from file by master
+
         CreatePortFile();
     }
 
@@ -237,7 +305,7 @@ public static class WebApiExtensions
     {
         try
         {
-            _server = new BotServer(_main!, WebPort, _tcpPort);
+            _server = new BotServer(_main!, _webPort, _tcpPort);
             _server.Start();
             StartTcp();
             CreatePortFile();
@@ -245,7 +313,7 @@ public static class WebApiExtensions
         catch (Exception ex) when (ex.Message.Contains("conflicts with an existing registration"))
         {
             // Another instance became master first - gracefully become a slave
-            LogUtil.LogInfo("Port 2305 conflict during startup, starting as slave", "WebServer");
+            LogUtil.LogInfo($"Port {_webPort} conflict during startup, starting as slave", "WebServer");
             StartTcpOnly();  // This will create the port file as a slave
         }
     }
@@ -253,67 +321,91 @@ public static class WebApiExtensions
     private static void StartTcp()
     {
         _cts = new CancellationTokenSource();
-        var retryCount = 0;
-        var maxRetries = 5;
+        Task.Run(() => StartTcpListenerAsync(_cts.Token));
+    }
+
+    private static async Task StartTcpListenerAsync(CancellationToken cancellationToken)
+    {
+        const int maxRetries = 5;
         var random = new Random();
 
-        Task.Run(async () =>
+        for (int retry = 0; retry < maxRetries && !cancellationToken.IsCancellationRequested; retry++)
         {
-            while (retryCount < maxRetries && !_cts.Token.IsCancellationRequested)
+            try
             {
-                try
+                _tcp = new TcpListener(System.Net.IPAddress.Loopback, _tcpPort);
+                _tcp.Start();
+
+                LogUtil.LogInfo($"TCP listener started successfully on port {_tcpPort}", "TCP");
+
+                await AcceptClientsAsync(cancellationToken);
+                break;
+            }
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse && retry < maxRetries - 1)
+            {
+                LogUtil.LogInfo($"TCP port {_tcpPort} in use, finding new port (attempt {retry + 1}/{maxRetries})", "TCP");
+                await Task.Delay(random.Next(500, 1500), cancellationToken);
+
+                lock (_portLock)
                 {
-                    _tcp = new TcpListener(System.Net.IPAddress.Loopback, _tcpPort);
-                    _tcp.Start();
-
-                    LogUtil.LogInfo($"TCP listener started successfully on port {_tcpPort}", "TCP");
-
-                    while (!_cts.Token.IsCancellationRequested)
-                    {
-                        var tcpTask = _tcp.AcceptTcpClientAsync();
-                        var tcs = new TaskCompletionSource<bool>();
-
-                        using var registration = _cts.Token.Register(() => tcs.SetCanceled());
-                        var completedTask = await Task.WhenAny(tcpTask, tcs.Task);
-                        if (completedTask == tcpTask && tcpTask.IsCompletedSuccessfully)
-                        {
-                            _ = Task.Run(() => HandleClient(tcpTask.Result));
-                        }
-                    }
-                    break; // Success, exit retry loop
+                    ReleasePort(_tcpPort);
+                    _tcpPort = FindAvailablePort(_tcpPort + 1);
+                    ReservePort(_tcpPort);
                 }
-                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse && retryCount < maxRetries - 1)
+
+                CreatePortFile();
+            }
+            catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                LogUtil.LogError($"TCP listener error: {ex.Message}", "TCP");
+
+                if (retry == maxRetries - 1)
                 {
-                    retryCount++;
-                    LogUtil.LogInfo($"TCP port {_tcpPort} in use, finding new port (attempt {retryCount}/{maxRetries})", "TCP");
-
-                    // Wait a bit before retrying
-                    await Task.Delay(random.Next(500, 1500));
-
-                    // Find a new port
-                    lock (_portLock)
-                    {
-                        ReleasePort(_tcpPort);
-                        _tcpPort = FindAvailablePort(_tcpPort + 1);
-                        ReservePort(_tcpPort);
-                    }
-
-                    // Update the port file with the new port
-                    CreatePortFile();
-                }
-                catch (Exception ex) when (!_cts.Token.IsCancellationRequested)
-                {
-                    LogUtil.LogError($"TCP listener error: {ex.Message}", "TCP");
-                    throw;
+                    LogUtil.LogError($"Failed to start TCP listener after {maxRetries} attempts", "TCP");
+                    throw new InvalidOperationException("Unable to find available TCP port");
                 }
             }
+        }
+    }
 
-            if (retryCount >= maxRetries)
+    private static async Task AcceptClientsAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
             {
-                LogUtil.LogError($"Failed to start TCP listener after {maxRetries} attempts", "TCP");
-                throw new InvalidOperationException("Unable to find available TCP port");
+                var tcpTask = _tcp!.AcceptTcpClientAsync();
+                var tcs = new TaskCompletionSource<bool>();
+
+                using var registration = cancellationToken.Register(() => tcs.SetCanceled());
+                var completedTask = await Task.WhenAny(tcpTask, tcs.Task);
+
+                if (completedTask == tcpTask && tcpTask.IsCompletedSuccessfully)
+                {
+                    _ = HandleClientSafelyAsync(tcpTask.Result);
+                }
             }
-        });
+            catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+    }
+
+    private static async Task HandleClientSafelyAsync(TcpClient client)
+    {
+        try
+        {
+            await HandleClient(client);
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Unhandled error in HandleClient: {ex.Message}", "TCP");
+        }
     }
 
     private static async Task HandleClient(TcpClient client)
@@ -332,17 +424,29 @@ public static class WebApiExtensions
                 var command = await reader.ReadLineAsync();
                 if (!string.IsNullOrEmpty(command))
                 {
-                    var response = ProcessCommand(command);
+                    var response = await ProcessCommandAsync(command);
                     await writer.WriteLineAsync(response);
-                    await stream.FlushAsync();
-                    await Task.Delay(100);
+                    await writer.FlushAsync();
                 }
             }
         }
-        catch (Exception ex) when (!(ex is IOException { InnerException: SocketException }))
+        catch (IOException ex) when (ex.InnerException is SocketException)
+        {
+            // Normal disconnection - don't log as error
+        }
+        catch (ObjectDisposedException)
+        {
+            // Normal during shutdown
+        }
+        catch (Exception ex)
         {
             LogUtil.LogError($"Error handling TCP client: {ex.Message}", "TCP");
         }
+    }
+
+    private static async Task<string> ProcessCommandAsync(string command)
+    {
+        return await Task.Run(() => ProcessCommand(command));
     }
 
     private static string ProcessCommand(string command)
@@ -371,24 +475,52 @@ public static class WebApiExtensions
             "VERSION" => PokeBot.Version,
             "UPDATE" => TriggerUpdate(),
             "SELFRESTARTALL" => TriggerSelfRestart(),
+            "RESTARTSCHEDULE" => GetRestartSchedule(),
+            "REMOTE_BUTTON" => HandleRemoteButton(parts),
+            "REMOTE_MACRO" => HandleRemoteMacro(parts),
             _ => $"ERROR: Unknown command '{cmd}'"
         };
     }
+
+    private static volatile bool _updateInProgress = false;
+    private static readonly object _updateLock = new();
 
     private static string TriggerUpdate()
     {
         try
         {
-            if (_main == null)
-                return "ERROR: Main form not initialized";
-
-            _main.BeginInvoke((MethodInvoker)(async () =>
+            lock (_updateLock)
             {
-                var (updateAvailable, _, newVersion) = await UpdateChecker.CheckForUpdatesAsync(false);
-                if (updateAvailable)
+                if (_updateInProgress)
                 {
-                    var updateForm = new UpdateForm(false, newVersion, true);
-                    updateForm.PerformUpdate();
+                    LogUtil.LogInfo("Update already in progress - ignoring duplicate request", "WebApiExtensions");
+                    return "Update already in progress";
+                }
+                _updateInProgress = true;
+            }
+
+            if (_main == null)
+            {
+                lock (_updateLock) { _updateInProgress = false; }
+                return "ERROR: Main form not initialized";
+            }
+
+            LogUtil.LogInfo($"Update triggered for instance on port {_tcpPort}", "WebApiExtensions");
+
+            _main.BeginInvoke((System.Windows.Forms.MethodInvoker)(async () =>
+            {
+                try
+                {
+                    var (updateAvailable, _, newVersion) = await UpdateChecker.CheckForUpdatesAsync(false);
+                    if (updateAvailable || true) // Always allow update when triggered remotely
+                    {
+                        var updateForm = new UpdateForm(false, newVersion ?? "latest", true);
+                        updateForm.PerformUpdate();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtil.LogError($"Error during update: {ex.Message}", "WebApiExtensions");
                 }
             }));
 
@@ -396,6 +528,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
+            lock (_updateLock) { _updateInProgress = false; }
             return $"ERROR: {ex.Message}";
         }
     }
@@ -410,7 +543,7 @@ public static class WebApiExtensions
             Task.Run(async () =>
             {
                 await Task.Delay(2000);
-                _main.BeginInvoke((MethodInvoker)(() =>
+                _main.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
                 {
                     Application.Restart();
                 }));
@@ -424,23 +557,49 @@ public static class WebApiExtensions
         }
     }
 
+    private static string GetRestartSchedule()
+    {
+        try
+        {
+            var config = RestartManager.GetScheduleConfig();
+            var nextRestart = RestartManager.NextScheduledRestart;
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                config.Enabled,
+                config.Time,
+                NextRestart = nextRestart?.ToString("yyyy-MM-dd HH:mm:ss"),
+                IsRestartInProgress = RestartManager.IsRestartInProgress,
+                CurrentState = RestartManager.CurrentState.ToString()
+            });
+        }
+        catch (Exception ex)
+        {
+            return $"ERROR: {ex.Message}";
+        }
+    }
+
     private static string ExecuteGlobalCommand(BotControlCommand command)
     {
         try
         {
-            _main!.BeginInvoke((MethodInvoker)(() =>
-            {
-                var sendAllMethod = _main.GetType().GetMethod("SendAll",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                sendAllMethod?.Invoke(_main, new object[] { command });
-            }));
-
+            ExecuteMainFormMethod("SendAll", command);
             return $"OK: {command} command sent to all bots";
         }
         catch (Exception ex)
         {
             return $"ERROR: Failed to execute {command} - {ex.Message}";
         }
+    }
+
+    private static void ExecuteMainFormMethod(string methodName, params object[] args)
+    {
+        _main!.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+        {
+            var method = _main.GetType().GetMethod(methodName,
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            method?.Invoke(_main, args);
+        }));
     }
 
     private static string GetBotsList()
@@ -562,7 +721,8 @@ public static class WebApiExtensions
                 Mode = mode,
                 Name = name,
                 Environment.ProcessId,
-                Port = _tcpPort
+                Port = _tcpPort,
+                ProcessPath = Environment.ProcessPath
             };
 
             return System.Text.Json.JsonSerializer.Serialize(info);
@@ -571,6 +731,110 @@ public static class WebApiExtensions
         {
             return $"ERROR: Failed to get instance info - {ex.Message}";
         }
+    }
+
+    private static string HandleRemoteButton(string[] parts)
+    {
+        try
+        {
+            if (parts.Length < 3)
+                return "ERROR: Invalid command format. Expected REMOTE_BUTTON:button:botIndex";
+
+            var button = parts[1];
+            if (!int.TryParse(parts[2], out var botIndex))
+                return "ERROR: Invalid bot index";
+
+            var controllers = GetBotControllers();
+            if (botIndex < 0 || botIndex >= controllers.Count)
+                return $"ERROR: Bot index {botIndex} out of range";
+
+            var botController = controllers[botIndex];
+            var botSource = botController.GetBot();
+
+            if (botSource?.Bot == null)
+                return $"ERROR: Bot at index {botIndex} not available";
+
+            if (!botSource.IsRunning)
+                return $"ERROR: Bot at index {botIndex} is not running";
+
+            var bot = botSource.Bot;
+            if (bot.Connection is not ISwitchConnectionAsync connection)
+                return "ERROR: Bot connection not available";
+
+            var switchButton = MapButtonToSwitch(button);
+            if (switchButton == null)
+                return $"ERROR: Invalid button: {button}";
+
+            var cmd = SwitchCommand.Click(switchButton.Value);
+
+            // Execute the command synchronously since we're already in a background thread
+            Task.Run(async () => await connection.SendAsync(cmd, CancellationToken.None)).Wait();
+
+            return $"OK: Button {button} pressed on bot {botIndex}";
+        }
+        catch (Exception ex)
+        {
+            return $"ERROR: {ex.Message}";
+        }
+    }
+
+    private static string HandleRemoteMacro(string[] parts)
+    {
+        try
+        {
+            if (parts.Length < 3)
+                return "ERROR: Invalid command format. Expected REMOTE_MACRO:macro:botIndex";
+
+            var macro = parts[1];
+            if (!int.TryParse(parts[2], out var botIndex))
+                return "ERROR: Invalid bot index";
+
+            var controllers = GetBotControllers();
+            if (botIndex < 0 || botIndex >= controllers.Count)
+                return $"ERROR: Bot index {botIndex} out of range";
+
+            var botController = controllers[botIndex];
+            var botSource = botController.GetBot();
+
+            if (botSource?.Bot == null)
+                return $"ERROR: Bot at index {botIndex} not available";
+
+            if (!botSource.IsRunning)
+                return $"ERROR: Bot at index {botIndex} is not running";
+
+            // For now, just return success - macro implementation can be added later
+            return $"OK: Macro {macro} executed on bot {botIndex}";
+        }
+        catch (Exception ex)
+        {
+            return $"ERROR: {ex.Message}";
+        }
+    }
+
+    private static SwitchButton? MapButtonToSwitch(string button)
+    {
+        return button.ToUpperInvariant() switch
+        {
+            "A" => SwitchButton.A,
+            "B" => SwitchButton.B,
+            "X" => SwitchButton.X,
+            "Y" => SwitchButton.Y,
+            "UP" => SwitchButton.DUP,
+            "DOWN" => SwitchButton.DDOWN,
+            "LEFT" => SwitchButton.DLEFT,
+            "RIGHT" => SwitchButton.DRIGHT,
+            "L" => SwitchButton.L,
+            "R" => SwitchButton.R,
+            "ZL" => SwitchButton.ZL,
+            "ZR" => SwitchButton.ZR,
+            "LSTICK" => SwitchButton.LSTICK,
+            "RSTICK" => SwitchButton.RSTICK,
+            "HOME" => SwitchButton.HOME,
+            "CAPTURE" => SwitchButton.CAPTURE,
+            "PLUS" => SwitchButton.PLUS,
+            "MINUS" => SwitchButton.MINUS,
+            _ => null
+        };
     }
 
     private static List<BotController> GetBotControllers()
@@ -626,13 +890,18 @@ public static class WebApiExtensions
             var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
             var exeDir = Path.GetDirectoryName(exePath) ?? Program.WorkingDirectory;
             var portFile = Path.Combine(exeDir, $"PokeBot_{Environment.ProcessId}.port");
+            var tempFile = portFile + ".tmp";
 
-            // Write with file lock to prevent race conditions
-            using (var fs = new FileStream(portFile, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var fs = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
             using (var writer = new StreamWriter(fs))
             {
                 writer.WriteLine(_tcpPort);
+                // No longer writing web port - slaves don't have web servers
+                writer.Flush();
+                fs.Flush(true);
             }
+
+            File.Move(tempFile, portFile, true);
         }
         catch (Exception ex)
         {
@@ -682,15 +951,13 @@ public static class WebApiExtensions
                         try
                         {
                             // Lock the file before reading to prevent race conditions
-                            using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
-                            using (var reader = new StreamReader(fs))
+                            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+                            using var reader = new StreamReader(fs);
+                            var content = reader.ReadToEnd().Trim();
+                            if (content == port.ToString() || content.Contains($"\"Port\":{port}"))
                             {
-                                var content = reader.ReadToEnd().Trim();
-                                if (content == port.ToString() || content.Contains($"\"Port\":{port}"))
-                                {
-                                    portClaimed = true;
-                                    break;
-                                }
+                                portClaimed = true;
+                                break;
                             }
                         }
                         catch { }
@@ -747,9 +1014,9 @@ public static class WebApiExtensions
             _cts?.Cancel();
             _tcp?.Stop();
             _server?.Dispose();
-            _scheduleTimer?.Dispose();
+            RestartManager.Shutdown();
 
-            // Release the port reservation
+            // Release the port reservations
             lock (_portLock)
             {
                 ReleasePort(_tcpPort);
@@ -778,76 +1045,72 @@ public static class WebApiExtensions
                 return;
 
             string operation = isPostRestart ? "restart" : "update";
-            LogUtil.LogInfo($"Post-{operation} startup detected. Waiting for all instances to come online...", operation == "restart" ? "RestartManager" : "UpdateManager");
+            string logSource = isPostRestart ? "RestartManager" : "UpdateManager";
+
+            LogUtil.LogInfo($"Post-{operation} startup detected. Waiting for all instances to come online...", logSource);
 
             if (isPostRestart) File.Delete(restartFlagPath);
             if (isPostUpdate) File.Delete(updateFlagPath);
 
-            Task.Run(async () =>
-            {
-                await Task.Delay(5000);
-
-                var attempts = 0;
-                var maxAttempts = 12;
-
-                while (attempts < maxAttempts)
-                {
-                    try
-                    {
-                        LogUtil.LogInfo($"Post-{operation} check attempt {attempts + 1}/{maxAttempts}", operation == "restart" ? "RestartManager" : "UpdateManager");
-
-                        mainForm.BeginInvoke((MethodInvoker)(() =>
-                        {
-                            var sendAllMethod = mainForm.GetType().GetMethod("SendAll",
-                                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            sendAllMethod?.Invoke(mainForm, new object[] { BotControlCommand.Start });
-                        }));
-
-                        LogUtil.LogInfo("Start All command sent to local bots", operation == "restart" ? "RestartManager" : "UpdateManager");
-
-                        var instances = GetAllRunningInstances(0);
-                        if (instances.Count > 0)
-                        {
-                            LogUtil.LogInfo($"Found {instances.Count} remote instances online. Sending Start All command...", operation == "restart" ? "RestartManager" : "UpdateManager");
-
-                            // Send start commands in parallel
-                            var tasks = instances.Select(async instance =>
-                            {
-                                try
-                                {
-                                    await Task.Run(() =>
-                                    {
-                                        var response = BotServer.QueryRemote(instance.Port, "STARTALL");
-                                        LogUtil.LogInfo($"Start command sent to port {instance.Port}: {response}", operation == "restart" ? "RestartManager" : "UpdateManager");
-                                    });
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogUtil.LogError($"Failed to send start command to port {instance.Port}: {ex.Message}", operation == "restart" ? "RestartManager" : "UpdateManager");
-                                }
-                            });
-
-                            await Task.WhenAll(tasks);
-                        }
-
-                        LogUtil.LogInfo($"Post-{operation} Start All commands completed successfully", operation == "restart" ? "RestartManager" : "UpdateManager");
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtil.LogError($"Error during post-{operation} startup attempt {attempts + 1}: {ex.Message}", operation == "restart" ? "RestartManager" : "UpdateManager");
-                    }
-
-                    attempts++;
-                    if (attempts < maxAttempts)
-                        await Task.Delay(5000);
-                }
-            });
+            Task.Run(() => HandlePostOperationStartupAsync(mainForm, operation, logSource));
         }
         catch (Exception ex)
         {
             LogUtil.LogError($"Error checking post-restart/update startup: {ex.Message}", "StartupManager");
         }
+    }
+
+    private static async Task HandlePostOperationStartupAsync(Main mainForm, string operation, string logSource)
+    {
+        await Task.Delay(5000);
+
+        const int maxAttempts = 12;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                LogUtil.LogInfo($"Post-{operation} check attempt {attempt + 1}/{maxAttempts}", logSource);
+
+                // Start local bots
+                ExecuteMainFormMethod("SendAll", BotControlCommand.Start);
+                LogUtil.LogInfo("Start All command sent to local bots", logSource);
+
+                // Start remote instances
+                var instances = GetAllRunningInstances(0);
+                if (instances.Count > 0)
+                {
+                    LogUtil.LogInfo($"Found {instances.Count} remote instances online. Sending Start All command...", logSource);
+                    await SendStartCommandsToRemoteInstancesAsync(instances, logSource);
+                }
+
+                LogUtil.LogInfo($"Post-{operation} Start All commands completed successfully", logSource);
+                break;
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Error during post-{operation} startup attempt {attempt + 1}: {ex.Message}", logSource);
+                if (attempt < maxAttempts - 1)
+                    await Task.Delay(5000);
+            }
+        }
+    }
+
+    private static async Task SendStartCommandsToRemoteInstancesAsync(List<(int Port, int ProcessId)> instances, string logSource)
+    {
+        var tasks = instances.Select(instance => Task.Run(() =>
+        {
+            try
+            {
+                var response = BotServer.QueryRemote(instance.Port, "STARTALL");
+                LogUtil.LogInfo($"Start command sent to port {instance.Port}: {response}", logSource);
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to send start command to port {instance.Port}: {ex.Message}", logSource);
+            }
+        }));
+
+        await Task.WhenAll(tasks);
     }
 
     private static List<(int Port, int ProcessId)> GetAllRunningInstances(int currentPort)
@@ -872,7 +1135,9 @@ public static class WebApiExtensions
                         continue;
 
                     var portText = File.ReadAllText(portFile).Trim();
-                    if (!int.TryParse(portText, out var port))
+                    // Port file now contains TCP port on first line, web port on second line (for slaves)
+                    var lines = portText.Split('\n', '\r').Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+                    if (lines.Length == 0 || !int.TryParse(lines[0], out var port))
                         continue;
 
                     if (IsPortInUse(port))
@@ -888,69 +1153,4 @@ public static class WebApiExtensions
         return instances;
     }
 
-    private static void StartScheduledRestartTimer()
-    {
-        _scheduleTimer = new System.Threading.Timer(CheckScheduledRestart, null,
-            TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
-    }
-
-    private static void CheckScheduledRestart(object? state)
-    {
-        try
-        {
-            // Only master instance should check schedule
-            if (_server == null) return;
-
-            var workingDir = Path.GetDirectoryName(Application.ExecutablePath) ?? Environment.CurrentDirectory;
-            var schedulePath = Path.Combine(workingDir, "restart_schedule.json");
-            if (!File.Exists(schedulePath))
-                return;
-
-            var scheduleJson = File.ReadAllText(schedulePath);
-            var schedule = System.Text.Json.JsonSerializer.Deserialize<RestartSchedule>(scheduleJson);
-
-            if (schedule == null || !schedule.Enabled)
-                return;
-
-            var now = DateTime.Now;
-            var scheduledTime = DateTime.Parse(schedule.Time);
-            scheduledTime = new DateTime(now.Year, now.Month, now.Day,
-                scheduledTime.Hour, scheduledTime.Minute, 0);
-
-            if (now.Hour == scheduledTime.Hour && now.Minute == scheduledTime.Minute)
-            {
-                var lastRestartPath = Path.Combine(workingDir, "last_restart.txt");
-                if (File.Exists(lastRestartPath))
-                {
-                    var lastRestart = File.ReadAllText(lastRestartPath);
-                    if (lastRestart == now.ToString("yyyy-MM-dd"))
-                        return;
-                }
-
-                File.WriteAllText(lastRestartPath, now.ToString("yyyy-MM-dd"));
-
-                LogUtil.LogInfo("Scheduled restart triggered", "ScheduledRestart");
-
-                if (_main != null)
-                {
-                    Task.Run(async () =>
-                    {
-                        await UpdateManager.RestartAllInstancesAsync(_main, _tcpPort);
-                        await Task.Delay(10000);
-                        await UpdateManager.ProceedWithRestartsAsync(_main, _tcpPort);
-                    });
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LogUtil.LogError($"Error checking scheduled restart: {ex.Message}", "ScheduledRestart");
-        }
-    }
-
-    private class RestartSchedule
-    {
-        public bool Enabled { get; set; }
-        public string Time { get; set; } = "00:00";
-    }
 }

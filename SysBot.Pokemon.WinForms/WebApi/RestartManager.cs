@@ -25,7 +25,7 @@ public static class RestartManager
     private static CancellationTokenSource? _restartCts;
     private static Main? _mainForm;
     private static int _tcpPort;
-    
+
     // Consolidated file paths
     private static string WorkingDirectory => Path.GetDirectoryName(Application.ExecutablePath) ?? Environment.CurrentDirectory;
     private static string ScheduleConfigPath => Path.Combine(WorkingDirectory, "restart_schedule.json");
@@ -56,10 +56,10 @@ public static class RestartManager
     {
         _mainForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
         _tcpPort = tcpPort;
-        
+
         CheckPostRestartStartup();
         InitializeScheduledRestarts();
-        
+
         LogUtil.LogInfo("RestartManager initialized successfully", "RestartManager");
     }
 
@@ -73,7 +73,7 @@ public static class RestartManager
             _restartCts = null;
             _currentState = RestartState.Idle;
         }
-        
+
         LogUtil.LogInfo("RestartManager shutdown completed", "RestartManager");
     }
     #endregion
@@ -99,7 +99,7 @@ public static class RestartManager
         {
             LogUtil.LogError($"Failed to load restart schedule: {ex.Message}", "RestartManager");
         }
-        
+
         return new RestartScheduleConfig();
     }
 
@@ -110,7 +110,7 @@ public static class RestartManager
             // Save configuration first
             var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(ScheduleConfigPath, json);
-            
+
             // Clear any existing timer before updating
             lock (_stateLock)
             {
@@ -121,7 +121,7 @@ public static class RestartManager
                     _scheduleTimer = null;
                 }
             }
-            
+
             // Update timer based on new configuration
             UpdateScheduleTimer();
             LogUtil.LogInfo($"Restart schedule updated: Enabled={config.Enabled}, Time={config.Time}", "RestartManager");
@@ -175,13 +175,13 @@ public static class RestartManager
     {
         var now = DateTime.Now;
         var today = now.Date.Add(scheduledTime);
-        
+
         // If today's time has passed, schedule for tomorrow
         if (today <= now)
         {
             today = today.AddDays(1);
         }
-        
+
         return today;
     }
 
@@ -198,7 +198,7 @@ public static class RestartManager
             }
 
             LogUtil.LogInfo("Executing scheduled restart", "RestartManager");
-            
+
             // Start the restart process asynchronously
             _ = Task.Run(async () =>
             {
@@ -279,7 +279,7 @@ public static class RestartManager
         }
 
         var result = new RestartResult { Reason = reason };
-        
+
         try
         {
             LogUtil.LogInfo($"Starting {reason.ToString().ToLower()} restart process", "RestartManager");
@@ -288,7 +288,7 @@ public static class RestartManager
             SetState(RestartState.DiscoveringInstances);
             var instances = DiscoverAllInstances();
             result.TotalInstances = instances.Count;
-            
+
             LogUtil.LogInfo($"Found {instances.Count} instances to restart", "RestartManager");
 
             // Phase 2: Idle all bots
@@ -320,7 +320,7 @@ public static class RestartManager
             // Record successful restart
             RecordRestartDate();
             result.Success = true;
-            
+
             LogUtil.LogInfo($"{reason} restart completed successfully", "RestartManager");
         }
         catch (Exception ex)
@@ -424,13 +424,13 @@ public static class RestartManager
     {
         await ExecuteCommandOnAllInstancesAsync(instances, BotControlCommand.Idle, "idle");
     }
-    
+
     private static async Task ExecuteCommandOnAllInstancesAsync(List<InstanceInfo> instances, BotControlCommand command, string commandName)
     {
         var tasks = instances.Select(instance => ExecuteCommandOnInstanceAsync(instance, command, commandName));
         await Task.WhenAll(tasks);
     }
-    
+
     private static async Task ExecuteCommandOnInstanceAsync(InstanceInfo instance, BotControlCommand command, string commandName)
     {
         try
@@ -458,7 +458,7 @@ public static class RestartManager
             LogUtil.LogError($"Error {commandName}ing instance {instance.ProcessId} on port {instance.Port}: {ex.Message}", "RestartManager");
         }
     }
-    
+
     private static void ExecuteLocalCommand(BotControlCommand command)
     {
         _mainForm!.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
@@ -510,7 +510,7 @@ public static class RestartManager
             return false;
         }
     }
-    
+
     private static async Task<bool> CheckInstanceBotsIdleAsync(InstanceInfo instance)
     {
         try
@@ -529,12 +529,12 @@ public static class RestartManager
             return false;
         }
     }
-    
+
     private static bool CheckLocalBotsIdle()
     {
         var flpBotsField = _mainForm!.GetType().GetField("FLP_Bots",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            
+
         if (flpBotsField?.GetValue(_mainForm) is FlowLayoutPanel flpBots)
         {
             var controllers = flpBots.Controls.OfType<BotController>().ToList();
@@ -546,7 +546,7 @@ public static class RestartManager
         }
         return true;
     }
-    
+
     private static async Task<bool> CheckRemoteBotsIdleAsync(int port)
     {
         return await Task.Run(() =>
@@ -554,7 +554,7 @@ public static class RestartManager
             var botsResponse = BotServer.QueryRemote(port, "LISTBOTS");
             if (!botsResponse.StartsWith("{") || !botsResponse.Contains("Bots"))
                 return true;
-                
+
             try
             {
                 var botsData = JsonSerializer.Deserialize<Dictionary<string, List<Dictionary<string, object>>>>(botsResponse);
@@ -599,7 +599,7 @@ public static class RestartManager
             try
             {
                 LogUtil.LogInfo($"Restarting slave instance on port {slave.Port}...", "RestartManager");
-                
+
                 // First ensure all bots are stopped on this instance
                 var stopResponse = BotServer.QueryRemote(slave.Port, "STOPALL");
                 LogUtil.LogInfo($"Stop command sent to port {slave.Port}: {stopResponse}", "RestartManager");
@@ -616,7 +616,7 @@ public static class RestartManager
                     if (terminated)
                     {
                         LogUtil.LogInfo($"Process {slave.ProcessId} terminated successfully", "RestartManager");
-                        
+
                         // Wait for instance to come back online
                         var backOnline = await WaitForInstanceOnlineAsync(slave.Port, 60);
                         if (backOnline)
@@ -652,34 +652,34 @@ public static class RestartManager
     private static async Task RestartMasterInstanceAsync(RestartResult result)
     {
         LogUtil.LogInfo("Preparing to restart master instance", "RestartManager");
-        
+
         // Save current process IDs before restart
         SavePreRestartProcessIds();
-        
+
         // Create restart flag for post-restart detection
         File.WriteAllText(RestartFlagPath, DateTime.Now.ToString());
-        
+
         result.MasterRestarting = true;
-        
+
         // Give a moment for any pending operations
         await Task.Delay(2000);
-        
+
         // Restart the application
         _mainForm!.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
         {
             Application.Restart();
         }));
     }
-    
+
     private static void SavePreRestartProcessIds()
     {
         try
         {
             var pids = new List<int>();
-            
+
             // Add current process ID
             pids.Add(Environment.ProcessId);
-            
+
             // Add all PokeBot process IDs
             var processes = Process.GetProcessesByName("PokeBot");
             foreach (var process in processes)
@@ -690,7 +690,7 @@ public static class RestartManager
                 }
                 catch { }
             }
-            
+
             var json = JsonSerializer.Serialize(pids);
             File.WriteAllText(PreRestartPidsPath, json);
             LogUtil.LogInfo($"Saved {pids.Count} process IDs before restart", "RestartManager");
@@ -774,7 +774,7 @@ public static class RestartManager
 
             LogUtil.LogInfo("Post-restart startup detected. Initiating startup sequence...", "RestartManager");
             File.Delete(RestartFlagPath);
-            
+
             // Kill any lingering old processes
             KillOldProcesses();
 
@@ -786,32 +786,32 @@ public static class RestartManager
             LogUtil.LogError($"Error in post-restart startup: {ex.Message}", "RestartManager");
         }
     }
-    
+
     private static void KillOldProcesses()
     {
         try
         {
             if (!File.Exists(PreRestartPidsPath))
                 return;
-                
+
             var json = File.ReadAllText(PreRestartPidsPath);
             var oldPids = JsonSerializer.Deserialize<List<int>>(json);
             File.Delete(PreRestartPidsPath); // Clean up the file
-            
+
             if (oldPids == null || oldPids.Count == 0)
                 return;
-                
+
             LogUtil.LogInfo($"Checking for {oldPids.Count} old process IDs to clean up", "RestartManager");
-            
+
             var currentPid = Environment.ProcessId;
             var killedCount = 0;
-            
+
             foreach (var pid in oldPids)
             {
                 // Don't kill the current process
                 if (pid == currentPid)
                     continue;
-                    
+
                 try
                 {
                     var process = Process.GetProcessById(pid);
@@ -832,7 +832,7 @@ public static class RestartManager
                     LogUtil.LogError($"Failed to kill old process {pid}: {ex.Message}", "RestartManager");
                 }
             }
-            
+
             if (killedCount > 0)
             {
                 LogUtil.LogInfo($"Killed {killedCount} lingering old processes", "RestartManager");
@@ -845,21 +845,21 @@ public static class RestartManager
             LogUtil.LogError($"Error killing old processes: {ex.Message}", "RestartManager");
         }
     }
-    
+
     private static async Task ExecutePostRestartSequenceAsync()
     {
         await Task.Delay(5000); // Give system time to stabilize
-        
+
         const int maxAttempts = 12;
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             try
             {
                 LogUtil.LogInfo($"Post-restart startup attempt {attempt + 1}/{maxAttempts}", "RestartManager");
-                
+
                 // Start all bots
                 await StartAllBotsAsync();
-                
+
                 LogUtil.LogInfo("Post-restart startup sequence completed successfully", "RestartManager");
                 break;
             }
@@ -871,19 +871,19 @@ public static class RestartManager
             }
         }
     }
-    
+
     private static async Task StartAllBotsAsync()
     {
         // Start local bots
         ExecuteLocalCommand(BotControlCommand.Start);
         LogUtil.LogInfo("Start command sent to local bots", "RestartManager");
-        
+
         // Start remote instances
         var instances = GetAllRunningInstances();
         if (instances.Count > 0)
         {
             LogUtil.LogInfo($"Found {instances.Count} remote instances. Sending start commands...", "RestartManager");
-            
+
             var tasks = instances.Select(async instance =>
             {
                 try
@@ -896,7 +896,7 @@ public static class RestartManager
                     LogUtil.LogError($"Failed to send start command to port {instance.Port}: {ex.Message}", "RestartManager");
                 }
             });
-            
+
             await Task.WhenAll(tasks);
         }
     }

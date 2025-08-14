@@ -53,7 +53,7 @@ class ThemeManager {
     loadTheme() {
         const stored = localStorage.getItem(this.STORAGE_KEY);
         if (stored) return stored;
-        
+
         // Default to dark theme as requested
         return 'dark';
     }
@@ -64,14 +64,14 @@ class ThemeManager {
      */
     applyTheme(themeName) {
         const root = document.documentElement;
-        
+
         // Set data-theme attribute (CSS will handle the color changes)
         root.setAttribute('data-theme', themeName);
-        
+
         // Store current theme
         this.currentTheme = themeName;
         localStorage.setItem(this.STORAGE_KEY, themeName);
-        
+
         // Optional: Apply theme object properties if needed
         const theme = this.themes[themeName];
         if (theme) {
@@ -79,10 +79,10 @@ class ThemeManager {
                 root.style.setProperty(`--theme-${key}`, value);
             });
         }
-        
+
         // Dispatch theme change event
-        window.dispatchEvent(new CustomEvent('themechange', { 
-            detail: { theme: themeName } 
+        window.dispatchEvent(new CustomEvent('themechange', {
+            detail: { theme: themeName }
         }));
     }
 
@@ -96,7 +96,7 @@ class ThemeManager {
             headerButton.addEventListener('click', () => this.toggleTheme());
             this.updateButtonVisuals();
         }
-        
+
         // Legacy support: create a floating button if header button doesn't exist
         else {
             const button = document.createElement('button');
@@ -117,7 +117,7 @@ class ThemeManager {
         this.applyTheme(newTheme);
         this.updateButtonVisuals();
     }
-    
+
     /**
      * Update theme toggle button visuals
      */
@@ -125,10 +125,10 @@ class ThemeManager {
         // Update header button (uses CSS for icon visibility)
         const headerButton = document.getElementById('theme-toggle');
         if (headerButton) {
-            headerButton.setAttribute('aria-label', 
+            headerButton.setAttribute('aria-label',
                 `Switch to ${this.currentTheme === 'dark' ? 'light' : 'dark'} mode`);
         }
-        
+
         // Update any floating/legacy buttons
         const floatingButtons = document.querySelectorAll('.floating-theme-toggle');
         floatingButtons.forEach(button => {
@@ -171,7 +171,7 @@ class ApiService {
     async get(url, attempt = 1) {
         try {
             const absoluteUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`;
-            
+
             const response = await fetch(absoluteUrl, {
                 method: 'GET',
                 mode: 'cors',
@@ -213,11 +213,11 @@ class ApiService {
                 body: JSON.stringify(data),
                 signal: AbortSignal.timeout(10000)
             });
-            
+
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            
+
             return await response.json();
         } catch (error) {
             if (attempt < this.retryAttempts) {
@@ -369,7 +369,7 @@ class ToastManager {
     show(type, title, message, duration = 4000) {
         const toastId = Date.now();
         const template = document.getElementById('toast');
-        
+
         if (!template) {
             console.error('Toast template not found');
             return;
@@ -495,13 +495,13 @@ class InstanceRenderer {
      */
     render(instances) {
         const container = document.getElementById('instances-container');
-        
+
         // Update instance count in section title
         const countElement = document.getElementById('instance-count');
         if (countElement) {
             countElement.textContent = `(${instances.length})`;
         }
-        
+
         if (!container) return;
 
         if (instances.length === 0) {
@@ -538,8 +538,8 @@ class InstanceRenderer {
      */
     fullRender(container, instances) {
         const isMobile = this.isMobile();
-        
-        container.innerHTML = instances.map((instance, index) => 
+
+        container.innerHTML = instances.map((instance, index) =>
             this.renderInstanceCard(instance, index, isMobile)
         ).join('');
 
@@ -798,7 +798,7 @@ class DashboardManager {
      */
     update(instances) {
         const stats = this.calculateStatistics(instances);
-        
+
         this.animateValue('total-instances', stats.totalInstances);
         this.animateValue('active-bots', stats.activeBots);
         this.animateValue('idle-bots', stats.idleBots);
@@ -926,7 +926,7 @@ class StateManager extends EventTarget {
     set(key, value) {
         const oldValue = this.state[key];
         this.state[key] = value;
-        
+
         this.dispatchEvent(new CustomEvent('statechange', {
             detail: { key, oldValue, newValue: value }
         }));
@@ -960,14 +960,14 @@ class BotControlPanel {
         this.toastManager = new ToastManager();
         this.instanceRenderer = new InstanceRenderer(this.statusManager);
         this.dashboardManager = new DashboardManager();
-        
+
         this.refreshManager = null;
         this.commandManager = null;
         this.updateManager = null;
         this.restartManager = null;
         this.logViewer = null;
         this.remoteControl = null;
-        
+
         this.init();
     }
 
@@ -978,11 +978,11 @@ class BotControlPanel {
         await this.setupModules();
         await this.setupEventHandlers();
         await this.checkForOngoingOperations();
-        
+
         if (!this.state.get('updateState')?.id) {
             await this.refresh();
         }
-        
+
         this.startRefreshCycle();
         this.startConnectionMonitor();
         await this.loadRestartSchedule();
@@ -994,19 +994,19 @@ class BotControlPanel {
     async setupModules() {
         // Initialize refresh manager
         this.refreshManager = new RefreshManager(this);
-        
+
         // Initialize command manager
         this.commandManager = new CommandManager(this);
-        
+
         // Initialize update manager
         this.updateManager = new UpdateManager(this);
-        
+
         // Initialize restart manager
         this.restartManager = new RestartManager(this);
-        
+
         // Initialize log viewer
         this.logViewer = new LogViewer(this);
-        
+
         // Initialize remote control
         this.remoteControl = new RemoteControl(this);
     }
@@ -1018,17 +1018,17 @@ class BotControlPanel {
         // Use event delegation for better performance
         document.addEventListener('click', this.handleClick.bind(this), { passive: false });
         document.addEventListener('touchend', this.handleTouch.bind(this), { passive: false });
-        
+
         // Handle keyboard shortcuts
         document.addEventListener('keydown', this.handleKeyboard.bind(this));
-        
+
         // Handle window events
         window.addEventListener('beforeunload', this.cleanup.bind(this));
         window.addEventListener('resize', this.handleResize.bind(this));
-        
+
         // Handle visibility changes
         document.addEventListener('visibilitychange', this.handleVisibilityChange.bind(this));
-        
+
         // Setup specific button handlers
         this.setupButtonHandlers();
     }
@@ -1083,7 +1083,7 @@ class BotControlPanel {
      */
     handleTouch(e) {
         if (!/iPhone|iPad|iPod/i.test(navigator.userAgent)) return;
-        
+
         const target = e.target.closest('button');
         if (target && target.hasAttribute('data-global-action')) {
             e.preventDefault();
@@ -1101,7 +1101,7 @@ class BotControlPanel {
         if (e.key === 'Escape') {
             this.closeAllModals();
         }
-        
+
         // Ctrl/Cmd + R refreshes
         if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
             e.preventDefault();
@@ -1211,7 +1211,7 @@ class BotControlPanel {
      */
     toggleActionMenu(port) {
         this.state.set('currentActionPort', port);
-        
+
         const modal = document.getElementById('actions-modal');
         if (modal) {
             modal.style.display = 'flex';
@@ -1290,7 +1290,7 @@ class BotControlPanel {
         setInterval(async () => {
             try {
                 await this.api.get(this.api.endpoints.instances);
-                
+
                 if (this.state.get('connectionLost')) {
                     this.state.set('connectionLost', false);
                     this.handleReconnection();
@@ -1415,12 +1415,12 @@ class RefreshManager {
         const hasOpenMenu = document.querySelector('.action-menu.show') !== null;
         const actionsModal = document.getElementById('actions-modal');
         const isActionsModalOpen = actionsModal && actionsModal.style.display === 'flex';
-        
-        return !hasOpenMenu && 
-               !isActionsModalOpen &&
-               !this.app.state.get('isInteracting') && 
-               !this.app.state.get('refreshPaused') && 
-               timeSinceLastRefresh >= this.refreshRate;
+
+        return !hasOpenMenu &&
+            !isActionsModalOpen &&
+            !this.app.state.get('isInteracting') &&
+            !this.app.state.get('refreshPaused') &&
+            timeSinceLastRefresh >= this.refreshRate;
     }
 
     /**
@@ -1561,11 +1561,11 @@ class UpdateManager {
 
             if (response.success) {
                 this.app.toastManager.success(`Started update for instance on port ${port}`);
-                
+
                 // Show progress modal
                 this.showModal('progress');
                 document.getElementById('progress-modal-title').textContent = `Updating Instance ${port}`;
-                
+
                 // Initialize update state
                 const updateState = this.app.state.get('updateState');
                 updateState.id = `single-${port}-${Date.now()}`;
@@ -1573,7 +1573,7 @@ class UpdateManager {
                 updateState.port = port;
                 updateState.startTime = Date.now();
                 this.app.state.set('updateState', updateState);
-                
+
                 // Start monitoring (will use the regular status checking)
                 this.startStatusCheck();
                 this.app.state.set('refreshPaused', true);
@@ -1624,7 +1624,7 @@ class UpdateManager {
     async confirmUpdate() {
         this.closeModal('update');
         this.showModal('progress');
-        
+
         const updateState = this.app.state.get('updateState');
         updateState.type = 'update';
         updateState.startTime = Date.now();
@@ -1639,7 +1639,7 @@ class UpdateManager {
 
             updateState.id = response.sessionId;
             this.app.state.set('updateState', updateState);
-            
+
             this.startStatusCheck();
             this.app.state.set('refreshPaused', true);
 
@@ -1661,7 +1661,7 @@ class UpdateManager {
         updateState.type = 'update';
         updateState.startTime = new Date(session.startTime).getTime();
         this.app.state.set('updateState', updateState);
-        
+
         this.showModal('progress');
         this.startStatusCheck();
         this.app.state.set('refreshPaused', true);
@@ -1684,13 +1684,13 @@ class UpdateManager {
 
         try {
             const response = await this.app.api.get(this.app.api.endpoints.updateActive);
-            
+
             // If no active session, check if we just completed
             if (!response.active || !response.session) {
                 // Get current version to check if update succeeded
                 const instancesResponse = await this.app.api.get(this.app.api.endpoints.instances);
                 const currentVersion = instancesResponse.instances?.[0]?.version || 'Unknown';
-                
+
                 // If version changed or session disappeared, assume success
                 console.log('Update session ended - checking completion');
                 this.handleCompletion({
@@ -1741,7 +1741,7 @@ class UpdateManager {
             }
             progressDetails.textContent = details;
         }
-        
+
         // Update step icon based on phase
         if (stepIcon) {
             const iconMap = {
@@ -1753,7 +1753,7 @@ class UpdateManager {
             };
             stepIcon.textContent = iconMap[status.phase] || '⏳';
         }
-        
+
         // Calculate progress percentage
         let progressPercent = -1;
         if (status.phase === 'Checking') {
@@ -1767,7 +1767,7 @@ class UpdateManager {
         } else if (status.phase === 'Complete') {
             progressPercent = 100;
         }
-        
+
         if (progressBar) {
             if (progressPercent >= 0) {
                 progressBar.style.width = `${progressPercent}%`;
@@ -1805,17 +1805,17 @@ class UpdateManager {
         const botsTotal = document.getElementById('bots-total');
         const timeoutCountdown = document.getElementById('timeout-countdown');
         const forceUpdateInfo = document.getElementById('force-update-info');
-        
+
         if (status.phase === 'Idling' && status.idleProgress) {
             // Show idle status
             if (idleStatusDiv) idleStatusDiv.style.display = 'block';
             if (forceUpdateInfo) forceUpdateInfo.style.display = 'block';
-            
+
             const progress = status.idleProgress;
             if (botsIdled) botsIdled.textContent = progress.idleBots;
             if (botsTotal) botsTotal.textContent = progress.totalBots;
             if (timeoutCountdown) timeoutCountdown.textContent = progress.remainingSeconds;
-            
+
             // Update instance-specific idle status
             const updateLog = document.getElementById('update-log');
             if (updateLog && progress.instances) {
@@ -1823,11 +1823,11 @@ class UpdateManager {
                     const statusClass = inst.allIdle ? 'success' : 'warning';
                     const statusIcon = inst.allIdle ? '✅' : '⏳';
                     const idleInfo = `${inst.idleBots}/${inst.totalBots} idle`;
-                    
+
                     let html = `<div class="idle-instance ${statusClass}">`;
                     html += `<span class="instance-name">${statusIcon} ${inst.name}:</span>`;
                     html += `<span class="idle-count">${idleInfo}</span>`;
-                    
+
                     if (inst.nonIdleBots && inst.nonIdleBots.length > 0) {
                         html += `<div class="non-idle-bots">`;
                         inst.nonIdleBots.forEach(bot => {
@@ -1838,7 +1838,7 @@ class UpdateManager {
                     html += `</div>`;
                     return html;
                 }).join('');
-                
+
                 updateLog.innerHTML = `<div class="idle-progress-details">${logHtml}</div>`;
             }
         } else {
@@ -1855,14 +1855,14 @@ class UpdateManager {
     updateTimeline(status) {
         const timeline = document.getElementById('update-timeline');
         if (!timeline) return;
-        
+
         if (status.phase === 'Updating' && status.instances) {
             const timelineHtml = status.instances.map(inst => {
                 let statusClass = '';
                 let statusIcon = '';
                 let statusText = '';
-                
-                switch(inst.status) {
+
+                switch (inst.status) {
                     case 'Completed':
                         statusClass = 'completed';
                         statusIcon = '✅';
@@ -1883,17 +1883,17 @@ class UpdateManager {
                         statusIcon = '⏳';
                         statusText = 'Pending';
                 }
-                
+
                 const instanceName = inst.isMaster ? 'Master' : `Instance ${inst.tcpPort}`;
                 const isCurrent = status.currentUpdatingInstance === instanceName;
-                
+
                 return `<div class="timeline-item ${statusClass} ${isCurrent ? 'current' : ''}">
                     <span class="timeline-icon">${statusIcon}</span>
                     <span class="timeline-name">${instanceName}</span>
                     <span class="timeline-status">${statusText}</span>
                 </div>`;
             }).join('');
-            
+
             timeline.innerHTML = `<div class="timeline-header">Update Progress:</div>${timelineHtml}`;
             timeline.style.display = 'block';
         } else if (status.phase !== 'Idling') {
@@ -1908,7 +1908,7 @@ class UpdateManager {
     handleCompletion(status) {
         clearInterval(this.checkInterval);
         this.checkInterval = null;
-        
+
         const updateState = this.app.state.get('updateState');
         updateState.id = null;
         updateState.interval = null;
@@ -1919,7 +1919,7 @@ class UpdateManager {
         const progressStatus = document.getElementById('progress-status');
         const progressDetails = document.getElementById('progress-details');
         const progressBar = document.getElementById('progress-bar');
-        
+
         if (status.success) {
             // Update UI to show success
             if (progressStatus) progressStatus.textContent = '✅ Update Complete!';
@@ -1929,9 +1929,9 @@ class UpdateManager {
                 progressBar.style.background = 'var(--status-online)';
                 progressBar.classList.remove('indeterminate');
             }
-            
+
             this.app.toastManager.success(`Update completed successfully! Refreshing...`);
-            
+
             // Reload page after showing success
             setTimeout(() => {
                 window.location.reload();
@@ -1944,9 +1944,9 @@ class UpdateManager {
                 progressBar.style.background = 'var(--danger-red)';
                 progressBar.classList.remove('indeterminate');
             }
-            
+
             this.app.toastManager.error(`Update completed with errors`);
-            
+
             setTimeout(() => {
                 this.closeModal('progress');
                 this.app.refresh();
@@ -1960,13 +1960,13 @@ class UpdateManager {
     completeUpdate() {
         clearInterval(this.checkInterval);
         this.checkInterval = null;
-        
+
         const updateState = this.app.state.get('updateState');
         updateState.id = null;
         updateState.interval = null;
         this.app.state.set('updateState', updateState);
         this.app.state.set('refreshPaused', false);
-        
+
         this.closeModal('progress');
         this.app.refresh();
     }
@@ -2212,7 +2212,7 @@ class RestartManager {
     async checkSchedule() {
         try {
             const response = await this.app.api.get(this.app.api.endpoints.restartSchedule);
-            
+
             if (!response.Enabled) {
                 this.stopScheduleChecker();
                 return;
@@ -2337,7 +2337,7 @@ class LogViewer {
      */
     open(port) {
         this.currentPort = port;
-        
+
         const modal = document.getElementById('log-viewer-modal');
         if (!modal) return;
 
@@ -2390,7 +2390,7 @@ class LogViewer {
         }
 
         const wasAtBottom = this.isScrolledToBottom();
-        
+
         const html = logs.map(log => {
             const levelClass = this.getLevelClass(log.level);
             const timestamp = new Date(log.timestamp).toLocaleTimeString();
@@ -2661,34 +2661,34 @@ class RemoteControl {
         const updateStickPosition = (type, clientX, clientY) => {
             const stick = this.stickState[type];
             if (!stick.element) return;
-            
+
             const rect = stick.element.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
             const centerY = rect.top + rect.height / 2;
-            
+
             // Calculate offset from center
             let deltaX = clientX - centerX;
             let deltaY = clientY - centerY;
-            
+
             // Limit to circular area
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
             const maxDistance = rect.width / 2 * 0.8; // 80% of radius
-            
+
             if (distance > maxDistance) {
                 const ratio = maxDistance / distance;
                 deltaX *= ratio;
                 deltaY *= ratio;
             }
-            
+
             // Convert to -1 to 1 range
             stick.x = deltaX / maxDistance;
             stick.y = deltaY / maxDistance;
-            
+
             // Update visual
             if (stick.knob) {
                 stick.knob.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
             }
-            
+
             // Send to bot
             if (this.isLiveMode) {
                 this.sendStickPosition(type, stick.x, stick.y);
@@ -2699,30 +2699,30 @@ class RemoteControl {
         ['left', 'right'].forEach(type => {
             const stick = this.stickState[type];
             if (!stick.element) return;
-            
+
             const state = stickStates[type];
 
             // Mouse down / touch start
             const handleStart = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 state.isDragging = true;
                 stick.active = true;
                 stick.element.classList.add('stick-active');
-                
+
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                
+
                 updateStickPosition(type, clientX, clientY);
             };
 
             // Mouse events
             stick.element.addEventListener('mousedown', handleStart);
-            
+
             // Touch events  
             stick.element.addEventListener('touchstart', handleStart, { passive: false });
-            
+
             // Prevent context menu
             stick.element.addEventListener('contextmenu', (e) => e.preventDefault());
         });
@@ -2732,20 +2732,20 @@ class RemoteControl {
             ['left', 'right'].forEach(type => {
                 const state = stickStates[type];
                 if (!state.isDragging) return;
-                
+
                 const stick = this.stickState[type];
                 if (!stick.element) return;
-                
+
                 // Cancel previous frame
                 if (state.animationFrame) {
                     cancelAnimationFrame(state.animationFrame);
                 }
-                
+
                 // Schedule update
                 state.animationFrame = requestAnimationFrame(() => {
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                    
+
                     updateStickPosition(type, clientX, clientY);
                 });
             });
@@ -2756,28 +2756,28 @@ class RemoteControl {
             ['left', 'right'].forEach(type => {
                 const state = stickStates[type];
                 if (!state.isDragging) return;
-                
+
                 const stick = this.stickState[type];
                 if (!stick.element) return;
-                
+
                 state.isDragging = false;
                 stick.active = false;
                 stick.element.classList.remove('stick-active');
-                
+
                 // Cancel animation frame
                 if (state.animationFrame) {
                     cancelAnimationFrame(state.animationFrame);
                     state.animationFrame = null;
                 }
-                
+
                 // Reset to center
                 stick.x = 0;
                 stick.y = 0;
-                
+
                 if (stick.knob) {
                     stick.knob.style.transform = 'translate(-50%, -50%)';
                 }
-                
+
                 // Send neutral position
                 this.sendStickPosition(type, 0, 0);
             });
@@ -2800,22 +2800,22 @@ class RemoteControl {
      */
     async sendStickPosition(type, x, y) {
         if (!this.currentPort || this.isProcessing) return;
-        
+
         const selectedBot = this.availableBots[this.currentBotIndex];
         if (!selectedBot || !this.isBotRunning(selectedBot)) return;
-        
+
         try {
             // Convert to controller values (0-255 with 128 as center)
             const stickX = Math.round((x + 1) * 127.5);
             const stickY = Math.round((1 - y) * 127.5); // Invert Y for controller
-            
+
             await this.app.api.post(
                 `/api/bot/instances/${this.currentPort}/remote/stick`,
-                { 
+                {
                     stick: type.toUpperCase(),
                     x: stickX,
                     y: stickY,
-                    botIndex: this.currentBotIndex 
+                    botIndex: this.currentBotIndex
                 }
             );
         } catch (error) {
@@ -2830,7 +2830,7 @@ class RemoteControl {
     async open(port) {
         this.currentPort = port;
         this.currentBotIndex = 0;
-        
+
         const modal = document.getElementById('remote-control-modal');
         if (modal) {
             modal.style.display = 'flex';
@@ -2846,13 +2846,13 @@ class RemoteControl {
         try {
             const response = await this.app.api.get(`/api/bot/instances/${this.currentPort}/bots`);
             const bots = Array.isArray(response) ? response : (response.Bots || response.bots || []);
-            
+
             this.availableBots = bots;
             this.populateBotSelector(bots);
-            
+
             if (bots && bots.length > 0) {
                 const runningBots = bots.filter(b => this.isBotRunning(b));
-                
+
                 if (runningBots.length > 0) {
                     this.currentBotIndex = bots.indexOf(runningBots[0]);
                     document.getElementById('remote-bot-select').value = this.currentBotIndex.toString();
@@ -2874,10 +2874,10 @@ class RemoteControl {
         const stoppedStates = ['STOPPED', 'STOPPING', 'ERROR', 'UNKNOWN'];
         const idleStates = ['IDLE', 'IDLING'];
         const botStatus = bot.Status || bot.status;
-        
-        return botStatus && 
-               !stoppedStates.includes(botStatus.toUpperCase()) &&
-               !idleStates.includes(botStatus.toUpperCase());
+
+        return botStatus &&
+            !stoppedStates.includes(botStatus.toUpperCase()) &&
+            !idleStates.includes(botStatus.toUpperCase());
     }
 
     /**
@@ -2889,23 +2889,23 @@ class RemoteControl {
         if (!selector) return;
 
         selector.innerHTML = '';
-        
+
         if (!bots || bots.length === 0) {
             selector.innerHTML = '<option value="">No bots available</option>';
             return;
         }
-        
+
         bots.forEach((bot, index) => {
             const option = document.createElement('option');
             option.value = index.toString();
-            
+
             const isRunning = this.isBotRunning(bot);
             const status = isRunning ? '🟢' : '🔴';
             const name = bot.Name || bot.name || `Bot ${index + 1}`;
-            
+
             option.textContent = `${status} ${name}`;
             option.disabled = !isRunning;
-            
+
             selector.appendChild(option);
         });
     }
@@ -2922,7 +2922,7 @@ class RemoteControl {
             const isRunning = this.isBotRunning(bot);
             const name = bot.Name || bot.name || 'Bot';
             const status = bot.Status || bot.status || 'Unknown';
-            
+
             connectionInfo.textContent = `${name} - ${status}`;
             connectionInfo.className = `connection-info status-${isRunning ? 'success' : 'warning'}`;
         }
@@ -2934,7 +2934,7 @@ class RemoteControl {
      */
     async sendButton(button) {
         if (!this.currentPort || this.isProcessing) return;
-        
+
         const selectedBot = this.availableBots[this.currentBotIndex];
         if (!selectedBot || !this.isBotRunning(selectedBot)) {
             this.app.toastManager.error('Selected bot is not running');
@@ -2942,7 +2942,7 @@ class RemoteControl {
         }
 
         this.isProcessing = true;
-        
+
         try {
             const response = await this.app.api.post(
                 `/api/bot/instances/${this.currentPort}/remote/button`,
@@ -2968,7 +2968,7 @@ class RemoteControl {
      */
     async sendMacro(macro) {
         if (!this.currentPort || this.isProcessing) return;
-        
+
         const selectedBot = this.availableBots[this.currentBotIndex];
         if (!selectedBot || !this.isBotRunning(selectedBot)) {
             this.app.toastManager.error('Selected bot is not running');
@@ -2976,7 +2976,7 @@ class RemoteControl {
         }
 
         this.isProcessing = true;
-        
+
         try {
             const response = await this.app.api.post(
                 `/api/bot/instances/${this.currentPort}/remote/macro`,

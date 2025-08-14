@@ -11,9 +11,9 @@ public abstract class ApiResponse
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Error { get; set; }
-    
+
     public bool Success => string.IsNullOrEmpty(Error);
-    
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTime? Timestamp { get; set; } = DateTime.Now;
 }
@@ -41,7 +41,7 @@ public class BotInstance
     public bool IsOnline { get; set; }
     public bool IsMaster { get; set; }
     public string? ProcessPath { get; set; }
-    
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<BotStatusInfo>? BotStatuses { get; set; }
 }
@@ -75,7 +75,7 @@ public class BotInfo
 public class BotCommandRequest
 {
     public string Command { get; set; } = string.Empty;
-    
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? BotId { get; set; }
 }
@@ -88,7 +88,7 @@ public class CommandResponse : ApiResponse
     public string Message { get; set; } = string.Empty;
     public int Port { get; set; }
     public string Command { get; set; } = string.Empty;
-    
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? InstanceName { get; set; }
 }
@@ -171,12 +171,12 @@ public static class ApiResponseFactory
     {
         return new T { Error = message };
     }
-    
+
     public static SimpleResponse CreateSimpleError(string message)
     {
         return new SimpleResponse { Error = message, Message = message };
     }
-    
+
     public static SimpleResponse CreateSimpleSuccess(string message)
     {
         return new SimpleResponse { Message = message };

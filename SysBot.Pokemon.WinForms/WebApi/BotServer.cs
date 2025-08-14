@@ -78,7 +78,6 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             {
                 _listener.Prefixes.Add($"http://+:{_port}/");
                 _listener.Start();
-                LogUtil.LogInfo($"Web server listening on all interfaces at port {_port}", "WebServer");
             }
             catch (HttpListenerException ex) when (ex.ErrorCode == 5)
             {
@@ -88,9 +87,6 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 _listener.Start();
 
                 LogUtil.LogError($"Web server requires administrator privileges for network access. Currently limited to localhost only.", "WebServer");
-                LogUtil.LogInfo("To enable network access, either:", "WebServer");
-                LogUtil.LogInfo("1. Run this application as Administrator", "WebServer");
-                LogUtil.LogInfo("2. Or run this command as admin: netsh http add urlacl url=http://+:8080/ user=Everyone", "WebServer");
             }
 
             _running = true;
@@ -407,7 +403,6 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             // Start a new fire-and-forget background update
             var updateStatus = UpdateManager.StartBackgroundUpdate(_mainForm, _tcpPort);
 
-            LogUtil.LogInfo($"Started fire-and-forget update with ID: {updateStatus.Id}", "WebServer");
 
             return JsonSerializer.Serialize(new
             {
@@ -434,7 +429,6 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             // Start a new fire-and-forget background update for PokeBot instances only
             var updateStatus = UpdateManager.StartPokeBotUpdate(_mainForm, _tcpPort);
 
-            LogUtil.LogInfo($"Started PokeBot update with ID: {updateStatus.Id}", "WebServer");
 
             return JsonSerializer.Serialize(new
             {
@@ -461,7 +455,6 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             // Start a new fire-and-forget background update for RaidBot instances only
             var updateStatus = UpdateManager.StartRaidBotUpdate(_mainForm, _tcpPort);
 
-            LogUtil.LogInfo($"Started RaidBot update with ID: {updateStatus.Id}", "WebServer");
 
             return JsonSerializer.Serialize(new
             {
@@ -851,8 +844,12 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 
                 // Perform expensive remote scan with optimizations
                 var remoteInstances = ScanRemoteInstancesFast();
-                instances.AddRange(remoteInstances);
                 
+                // Filter out any remote instances that match our local master instance
+                var filteredRemoteInstances = remoteInstances.Where(r => 
+                    !(r.IP == "127.0.0.1" && r.Port == _tcpPort)).ToList();
+                    
+                instances.AddRange(filteredRemoteInstances);
                 
                 // Cache the results
                 _cachedInstances = new List<BotInstance>(instances);
@@ -960,26 +957,46 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 }
                 else
                 {
-                    // Get PokeBot version using the correct type and fallback
-                    var pokeBotType = Type.GetType("SysBot.Pokemon.Helpers.PokeBot, SysBot.Pokemon");
-                    if (pokeBotType != null)
+                    // Get PokeBot version - try multiple approaches for better compatibility
+                    try
                     {
-                        var versionField = pokeBotType.GetField("Version",
-                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                        if (versionField != null)
-                        {
-                            version = versionField.GetValue(null)?.ToString() ?? "Unknown";
-                        }
+                        // First try: Direct static access to SysBot.Pokemon.PokeBot.Version
+                        version = SysBot.Pokemon.PokeBot.Version;
                     }
-                    
-                    // Fallback to direct PokeBot.Version call
-                    if (version == "Unknown")
+                    catch
                     {
+                        // Second try: Reflection-based access
                         try
                         {
-                            version = SysBot.Pokemon.PokeBot.Version;
+                            var pokeBotType = Type.GetType("SysBot.Pokemon.Helpers.PokeBot, SysBot.Pokemon");
+                            if (pokeBotType != null)
+                            {
+                                var versionField = pokeBotType.GetField("Version",
+                                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                                if (versionField != null)
+                                {
+                                    version = versionField.GetValue(null)?.ToString() ?? "Unknown";
+                                }
+                            }
                         }
-                        catch { }
+                        catch
+                        {
+                            // Third try: SVRaidBot PokeBot version if available
+                            try
+                            {
+                                var svRaidBotType = Type.GetType("SysBot.Pokemon.PokeBot, SysBot.Pokemon");
+                                if (svRaidBotType != null)
+                                {
+                                    var versionProperty = svRaidBotType.GetProperty("Version",
+                                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                                    if (versionProperty != null)
+                                    {
+                                        version = versionProperty.GetValue(null)?.ToString() ?? "Unknown";
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
                     }
                 }
 
@@ -1082,16 +1099,12 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                     })).ToArray();
 
                 // Wait for all remote scans to complete with timeout
-                if (Task.WaitAll(tasks, TimeSpan.FromMilliseconds(1500))) // Increased timeout
+                if (Task.WaitAll(tasks, TimeSpan.FromMilliseconds(5000))) // Much longer for Tailscale
                 {
                     foreach (var task in tasks)
                     {
                         instances.AddRange(task.Result);
                     }
-                }
-                else
-                {
-                    LogUtil.LogInfo("Some remote node scans timed out", "WebServer");
                 }
             }
 
@@ -1102,7 +1115,9 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             
             foreach (var port in portsToScan)
             {
-                // Don't skip any ports during scanning - we'll filter duplicates later
+                // Skip our own master port to prevent duplicate instances
+                if (port == _tcpPort) continue;
+                
                 var currentPort = port;
                 var task = Task.Run(() => TryCreateInstanceFromPortAndIPFast("127.0.0.1", currentPort));
                 portTasks.Add(task);
@@ -1121,7 +1136,7 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             }
             
             // Wait for port scans with longer timeout for full range
-            var portScanCompleted = Task.WaitAll(portTasks.ToArray(), TimeSpan.FromMilliseconds(3000)); // Increased for stability
+            var portScanCompleted = Task.WaitAll(portTasks.ToArray(), TimeSpan.FromMilliseconds(4000)); // Increased for local stability
             
             var foundInstances = 0;
             foreach (var task in portTasks.Where(t => t.IsCompleted))
@@ -1142,10 +1157,6 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             }
             
             
-            if (!portScanCompleted)
-            {
-                LogUtil.LogInfo("Port scan partially timed out - some instances may not be shown", "WebServer");
-            }
         }
         catch (Exception ex)
         {
@@ -1244,7 +1255,8 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         {
             using var client = new TcpClient();
             var result = client.BeginConnect(ip, port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(600)); // Further increased for RaidBot compatibility
+            var timeoutMs = ip == "127.0.0.1" ? 600 : 2500; // Much longer timeout for remote instances  
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(timeoutMs));
             if (success)
             {
                 client.EndConnect(result);
@@ -1265,7 +1277,8 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             using var client = new TcpClient();
             
             var result = client.BeginConnect(ip, port, null, null);
-            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(800)); // Further increased for RaidBot compatibility
+            var timeoutMs = ip == "127.0.0.1" ? 1500 : 5000; // Increased timeouts for better connectivity
+            var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(timeoutMs));
             
             if (!success || !client.Connected)
             {
@@ -1273,8 +1286,9 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             }
             
             client.EndConnect(result);
-            client.ReceiveTimeout = 1000;  // Further increased for RaidBot compatibility
-            client.SendTimeout = 1000;
+            var readTimeoutMs = ip == "127.0.0.1" ? 2000 : 5000; // Increased for better reliability
+            client.ReceiveTimeout = readTimeoutMs;
+            client.SendTimeout = readTimeoutMs;
 
             using var stream = client.GetStream();
             using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
@@ -1294,60 +1308,126 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         try
         {
             var infoResponse = QueryRemoteFast(ip, port, "INFO");
-            
-            if (infoResponse.StartsWith("{"))
+
+            if (infoResponse.StartsWith("{") && !infoResponse.StartsWith("{\"ERROR"))
             {
-                using var doc = JsonDocument.Parse(infoResponse);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("Version", out var version))
-                    instance.Version = version.GetString() ?? "Unknown";
-
-                if (root.TryGetProperty("Mode", out var mode))
-                    instance.Mode = mode.GetString() ?? "Unknown";
-
-                if (root.TryGetProperty("Name", out var name))
-                    instance.Name = name.GetString() ?? "Unknown Bot";
-
-                if (root.TryGetProperty("BotType", out var botType))
+                try
                 {
-                    var botTypeStr = botType.GetString() ?? "PokeBot";
-                    instance.BotType = botTypeStr;
-                }
+                    using var doc = JsonDocument.Parse(infoResponse);
+                    var root = doc.RootElement;
+
+                    static string? GetStringCaseInsensitiveLocal(JsonElement el, params string[] names)
+                    {
+                        foreach (var name in names)
+                        {
+                            if (el.TryGetProperty(name, out var v))
+                                return v.GetString();
+                        }
+                        foreach (var prop in el.EnumerateObject())
+                        {
+                            foreach (var name in names)
+                            {
+                                if (prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                                    return prop.Value.GetString();
+                            }
+                        }
+                        return null;
+                    }
+                    static int GetIntCaseInsensitiveLocal(JsonElement el, params string[] names)
+                    {
+                        foreach (var name in names)
+                        {
+                            if (el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i))
+                                return i;
+                        }
+                        foreach (var prop in el.EnumerateObject())
+                        {
+                            foreach (var name in names)
+                            {
+                                if (prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var v = prop.Value;
+                                    if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i))
+                                        return i;
+                                    if (v.ValueKind == JsonValueKind.String && int.TryParse(v.GetString(), out var j))
+                                        return j;
+                                }
+                            }
+                        }
+                        return 0;
+                    }
+
+                    var versionFromJson = GetStringCaseInsensitiveLocal(root, "Version", "version");
+                    if (!IsVersionInvalid(versionFromJson))
+                    {
+                        instance.Version = versionFromJson!;
+                    }
+
+                    var modeFromJson = GetStringCaseInsensitiveLocal(root, "Mode", "mode");
+                    if (!string.IsNullOrWhiteSpace(modeFromJson))
+                    {
+                        instance.Mode = modeFromJson;
+                    }
+
+                    var nameFromJson = GetStringCaseInsensitiveLocal(root, "Name", "name");
+                    if (!string.IsNullOrWhiteSpace(nameFromJson))
+                    {
+                        instance.Name = nameFromJson;
+                    }
+
+                    var botTypeStrJson = GetStringCaseInsensitiveLocal(root, "BotType", "botType", "bottype");
+                    if (!string.IsNullOrWhiteSpace(botTypeStrJson))
+                    {
+                        instance.BotType = botTypeStrJson!;
+                    }
                 else
                 {
                     // Enhanced bot type detection fallback
                     var versionStr = instance.Version.ToLower();
                     var nameStr = instance.Name.ToLower();
                     var modeStr = instance.Mode.ToLower();
-                    
-                    // Enhanced bot type detection based on various indicators
-                    if (nameStr.Contains("raid") || versionStr.Contains("raid") || 
+
+                    if (nameStr.Contains("raid") || versionStr.Contains("raid") ||
                         nameStr.Contains("sv") || modeStr.Contains("raid") ||
-                        port >= 8082) // RaidBot typically uses higher ports
+                        (port >= 8082 && port <= 8089))
                     {
                         instance.BotType = "RaidBot";
                         if (instance.Name == "Unknown Bot")
                             instance.Name = $"SVRaidBot (Port {port})";
                     }
-                    else if (port == 8080)
+                    else if (port >= 8080 && port <= 8100)
                     {
                         instance.BotType = "PokeBot";
                         if (instance.Name == "Unknown Bot")
-                            instance.Name = "PokeBot (Master)";
-                    }
-                    else if (port == 8081)
-                    {
-                        instance.BotType = "PokeBot";
-                        if (instance.Name == "Unknown Bot")
-                            instance.Name = "PokeBot (Secondary)";
+                        {
+                            instance.Name = port switch
+                            {
+                                8080 => "PokeBot (Master)",
+                                8081 => "PokeBot (Secondary)",
+                                _ => $"PokeBot (Port {port})"
+                            };
+                        }
                     }
                     else
                     {
                         instance.BotType = "PokeBot";
-                        if (instance.Name == "Unknown Bot")
+                        if (instance.Name == "Unknown Bot" || instance.Name.Contains("Unknown"))
                             instance.Name = $"PokeBot (Port {port})";
                     }
+                }
+
+                    var pid = GetIntCaseInsensitiveLocal(root, "ProcessId", "processId", "processid");
+                    if (pid > 0)
+                        instance.ProcessId = pid;
+                }
+                catch (JsonException ex)
+                {
+                    LogUtil.LogError($"Failed to parse INFO JSON response from {ip}:{port}: {ex.Message}", "WebServer");
+                    // Continue with fallback logic below
+                }
+                catch (Exception ex)
+                {
+                    LogUtil.LogError($"Unexpected error parsing INFO response from {ip}:{port}: {ex.Message}", "WebServer");
                 }
             }
 
@@ -1361,30 +1441,144 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             try
             {
                 var botsResponse = QueryRemoteFast(ip, port, "LISTBOTS");
-                if (botsResponse.StartsWith("{") && botsResponse.Contains("Bots"))
+                if (botsResponse.StartsWith("{") && botsResponse.Contains("Bots") && !botsResponse.StartsWith("{\"ERROR"))
                 {
-                    var botsData = JsonSerializer.Deserialize<Dictionary<string, List<BotInfo>>>(botsResponse);
-                    if (botsData?.ContainsKey("Bots") == true)
+                    try
                     {
-                        instance.BotCount = botsData["Bots"].Count;
-                        instance.BotStatuses = [.. botsData["Bots"].Select(b => new BotStatusInfo
+                        var botsData = JsonSerializer.Deserialize<Dictionary<string, List<BotInfo>>>(botsResponse);
+                        if (botsData?.ContainsKey("Bots") == true)
                         {
-                            Name = b.Name,
-                            Status = b.Status
-                        })];
+                            instance.BotCount = botsData["Bots"].Count;
+                            instance.BotStatuses = [.. botsData["Bots"].Select(b => new BotStatusInfo
+                            {
+                                Name = b.Name ?? "Unknown",
+                                Status = b.Status ?? "Unknown"
+                            })];
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        LogUtil.LogError($"Failed to parse LISTBOTS JSON response from {ip}:{port}: {ex.Message}", "WebServer");
+                        instance.BotCount = 0;
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // If bot list query fails or times out, just skip it
+                LogUtil.LogError($"Bot list query failed for {ip}:{port}: {ex.Message}", "WebServer");
                 instance.BotCount = 0;
             }
+
+            // For remote instances, try to get version from INFO/VERSION commands
+            if (ip != "127.0.0.1" && IsVersionInvalid(instance.Version))
+            {
+                var ver = QueryRemoteFast(ip, port, "VERSION");
+                if (!string.IsNullOrWhiteSpace(ver) && !ver.StartsWith("ERROR") && !ver.StartsWith("Failed") && !ver.StartsWith("No response"))
+                {
+                    instance.Version = ver.Trim();
+                }
+                else
+                {
+                    // Additional fallback - try INFO command again with longer timeout
+                    var infoRetry = QueryRemoteFast(ip, port, "INFO");
+                    if (infoRetry.StartsWith("{"))
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(infoRetry);
+                            var root = doc.RootElement;
+                            var versionFromInfo = GetStringCaseInsensitive(root, "Version", "version", "Ver", "ver");
+                            if (!string.IsNullOrWhiteSpace(versionFromInfo))
+                            {
+                                instance.Version = versionFromInfo;
+                            }
+                        }
+                        catch
+                        {
+                            // JSON parsing failed, keep existing version or set default
+                        }
+                    }
+                }
+                
+                // Final fallback for remote instances
+                if (IsVersionInvalid(instance.Version))
+                {
+                    instance.Version = "Unknown";
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(instance.BotType))
+                instance.BotType = "PokeBot";
+
+            // FINAL STEP: For local instances (127.0.0.1), ensure bot-type specific consistent versioning
+            if (ip == "127.0.0.1")
+            {
+                try
+                {
+                    if (instance.BotType == "RaidBot")
+                    {
+                        // RaidBot should keep its own version from reflection logic above
+                        // Only override if version is invalid
+                        if (IsVersionInvalid(instance.Version))
+                        {
+                            instance.Version = "Unknown RaidBot"; 
+                        }
+                    }
+                    else
+                    {
+                        // For PokeBot instances, enforce consistent PokeBot version
+                        instance.Version = SysBot.Pokemon.PokeBot.Version;
+                    }
+                }
+                catch
+                {
+                    // Fallback handling
+                    if (instance.BotType != "RaidBot")
+                    {
+                        instance.Version = "v1.1.14c"; // PokeBot fallback
+                    }
+                }
+            }
+
+            // Local helper method for case-insensitive JSON property access
+            static string? GetStringCaseInsensitive(JsonElement el, params string[] names)
+            {
+                foreach (var name in names)
+                {
+                    if (el.TryGetProperty(name, out var v))
+                        return v.GetString();
+                }
+                foreach (var prop in el.EnumerateObject())
+                {
+                    foreach (var name in names)
+                    {
+                        if (prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                            return prop.Value.GetString();
+                    }
+                }
+                return null;
+            }
+
+            // Augment missing fields using process metadata (exe name, file versions)
+            TryAugmentFromProcess(instance);
         }
         catch
         {
             // If anything fails, just use default values
         }
+    }
+
+    // Helper method to determine if a version string is invalid
+    private static bool IsVersionInvalid(string? version)
+    {
+        return string.IsNullOrWhiteSpace(version) || 
+               version.Equals("Unknown", StringComparison.OrdinalIgnoreCase) ||
+               version.Equals("Error", StringComparison.OrdinalIgnoreCase) ||
+               version.Equals("0.0.0", StringComparison.OrdinalIgnoreCase) ||
+               version.Equals("1.0.0", StringComparison.OrdinalIgnoreCase) ||
+               version.Length < 3 ||
+               version.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase) ||
+               version.StartsWith("Failed", StringComparison.OrdinalIgnoreCase);
     }
 
     private List<BotInstance> ScanRemoteInstances()
@@ -1739,19 +1933,56 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 using var doc = JsonDocument.Parse(infoResponse);
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("Version", out var version))
-                    instance.Version = version.GetString() ?? "Unknown";
+                static string? GetStringCaseInsensitive(JsonElement el, params string[] names)
+                {
+                    foreach (var name in names)
+                    {
+                        if (el.TryGetProperty(name, out var v))
+                            return v.GetString();
+                    }
+                    foreach (var prop in el.EnumerateObject())
+                    {
+                        foreach (var name in names)
+                        {
+                            if (prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                                return prop.Value.GetString();
+                        }
+                    }
+                    return null;
+                }
+                static int GetIntCaseInsensitive(JsonElement el, params string[] names)
+                {
+                    foreach (var name in names)
+                    {
+                        if (el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i))
+                            return i;
+                    }
+                    foreach (var prop in el.EnumerateObject())
+                    {
+                        foreach (var name in names)
+                        {
+                            if (prop.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var v = prop.Value;
+                                if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i))
+                                    return i;
+                                if (v.ValueKind == JsonValueKind.String && int.TryParse(v.GetString(), out var j))
+                                    return j;
+                            }
+                        }
+                    }
+                    return 0;
+                }
 
-                if (root.TryGetProperty("Mode", out var mode))
-                    instance.Mode = mode.GetString() ?? "Unknown";
-
-                if (root.TryGetProperty("Name", out var name))
-                    instance.Name = name.GetString() ?? "Unknown Bot";
+                instance.Version = GetStringCaseInsensitive(root, "Version", "version") ?? "Unknown";
+                instance.Mode = GetStringCaseInsensitive(root, "Mode", "mode") ?? "Unknown";
+                instance.Name = GetStringCaseInsensitive(root, "Name", "name") ?? "Unknown Bot";
 
                 // Try to get BotType from the INFO response
-                if (root.TryGetProperty("BotType", out var botType))
+                var botTypeStrJson = GetStringCaseInsensitive(root, "BotType", "botType", "bottype");
+                if (!string.IsNullOrWhiteSpace(botTypeStrJson))
                 {
-                    instance.BotType = botType.GetString() ?? "PokeBot"; // Default to PokeBot instead of Unknown
+                    instance.BotType = botTypeStrJson!;
                 }
                 else
                 {
@@ -1784,6 +2015,10 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                             instance.BotType = "PokeBot"; // Default
                     }
                 }
+
+                var pid = GetIntCaseInsensitive(root, "ProcessId", "processId", "processid");
+                if (pid > 0)
+                    instance.ProcessId = pid;
             }
 
             var botsResponse = QueryRemote(ip, port, "LISTBOTS");
@@ -1800,8 +2035,69 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                     })];
                 }
             }
+
+            // Fallbacks if INFO wasn't available
+            if (string.IsNullOrWhiteSpace(instance.Version) || instance.Version.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                var ver = QueryRemote(ip, port, "VERSION");
+                if (!string.IsNullOrWhiteSpace(ver) && !ver.StartsWith("ERROR") && !ver.StartsWith("Failed"))
+                    instance.Version = ver.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(instance.BotType))
+                instance.BotType = "PokeBot";
+
+            // Augment missing fields using process metadata
+            TryAugmentFromProcess(instance);
         }
         catch { }
+    }
+
+    private static void TryAugmentFromProcess(BotInstance instance)
+    {
+        try
+        {
+            if (instance.ProcessId <= 0)
+                return;
+
+            var proc = Process.GetProcessById(instance.ProcessId);
+            var exePath = proc.MainModule?.FileName ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                var fileName = Path.GetFileName(exePath).ToLowerInvariant();
+
+                if (string.IsNullOrWhiteSpace(instance.BotType) || instance.BotType.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (fileName.Contains("svraid") || exePath.Contains("SVRaidBot", StringComparison.OrdinalIgnoreCase))
+                        instance.BotType = "RaidBot";
+                    else if (fileName.Contains("pokebot") || fileName.Contains("sysbot.pokemon.winforms"))
+                        instance.BotType = "PokeBot";
+                }
+
+                if (string.IsNullOrWhiteSpace(instance.Version) || instance.Version.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    var dir = Path.GetDirectoryName(exePath)!;
+                    var coreDll = Path.Combine(dir, "SysBot.Pokemon.dll");
+                    string? ver = null;
+                    if (File.Exists(coreDll))
+                    {
+                        var fvi = FileVersionInfo.GetVersionInfo(coreDll);
+                        ver = fvi.ProductVersion ?? fvi.FileVersion;
+                    }
+                    else
+                    {
+                        var fviExe = FileVersionInfo.GetVersionInfo(exePath);
+                        ver = fviExe.ProductVersion ?? fviExe.FileVersion;
+                    }
+                    if (!string.IsNullOrWhiteSpace(ver))
+                        instance.Version = ver!;
+                }
+            }
+        }
+        catch
+        {
+            // ignore process inspection errors
+        }
     }
 
     private static bool IsPortOpen(int port)
@@ -1917,10 +2213,17 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
         {
             using var reader = new StreamReader(request.InputStream);
             var body = await reader.ReadToEndAsync();
-            var commandRequest = JsonSerializer.Deserialize<BotCommandRequest>(body);
+            
+            var commandRequest = JsonSerializer.Deserialize<BotCommandRequest>(body, new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            });
 
             if (commandRequest == null)
                 return CreateErrorResponse("Invalid command request");
+                            
+            if (string.IsNullOrWhiteSpace(commandRequest.Command))
+                return CreateErrorResponse("Command cannot be empty");
 
             var results = new List<CommandResponse>();
 
@@ -1931,14 +2234,48 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                 results.Add(localResult);
             }
 
-            var remoteInstances = ScanRemoteInstances().Where(i => i.IsOnline);
+            // Use cached instances from GetInstances for better performance
+            var instancesJson = GetInstances();
+            var instancesDoc = JsonDocument.Parse(instancesJson);
+            var remoteInstances = new List<BotInstance>();
+                        
+            if (instancesDoc.RootElement.TryGetProperty("Instances", out var instancesArray))
+            {
+                foreach (var instanceElement in instancesArray.EnumerateArray())
+                {
+                    try
+                    {
+                        var instance = JsonSerializer.Deserialize<BotInstance>(instanceElement.GetRawText());
+                        if (instance != null)
+                        {                            
+                            if (instance.IsOnline && instance.Port != _tcpPort)
+                            {
+                                remoteInstances.Add(instance);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogError($"[ALL Command] Error parsing instance: {ex.Message}", "WebServer");
+                    }
+                }
+            }
+            else
+            {
+                LogUtil.LogError("[ALL Command] No 'Instances' property found in response", "WebServer");
+            }
+            
             foreach (var instance in remoteInstances)
             {
                 try
                 {
                     var targetIP = string.IsNullOrWhiteSpace(instance.IP) ? "127.0.0.1" : instance.IP;
-                    var tcpCommand = $"{commandRequest.Command.ToUpper()}ALL";
+                    // Convert STARTALL -> start, STOPALL -> stop, etc. for individual instances
+                    var baseCommand = commandRequest.Command.ToUpper().Replace("ALL", "").ToLower();
+                    var tcpCommand = baseCommand;
+                    
                     var result = QueryRemote(targetIP, instance.Port, tcpCommand);
+                    
                     results.Add(new CommandResponse
                     {
                         Success = !result.StartsWith("ERROR"),
@@ -1948,7 +2285,18 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
                         InstanceName = instance.Name
                     });
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    LogUtil.LogError($"[ALL Command] Error sending to {instance.IP}:{instance.Port}: {ex.Message}", "WebServer");
+                    results.Add(new CommandResponse
+                    {
+                        Success = false,
+                        Message = $"ERROR: {ex.Message}",
+                        Port = instance.Port,
+                        Command = commandRequest.Command,
+                        InstanceName = instance.Name
+                    });
+                }
             }
 
             return JsonSerializer.Serialize(new BatchCommandResponse
@@ -2163,12 +2511,10 @@ public class BotServer(Main mainForm, int port = 8080, int tcpPort = 8081) : IDi
             
             if (File.Exists(resourcePath))
             {
-                LogUtil.LogInfo($"Loading {resourceName} from file system: {resourcePath}", "WebServer");
                 return File.ReadAllText(resourcePath);
             }
             
             // Fallback to embedded resource
-            LogUtil.LogInfo($"Loading {resourceName} from embedded resources", "WebServer");
             return LoadEmbeddedResource(resourceName);
         }
         catch (Exception ex)

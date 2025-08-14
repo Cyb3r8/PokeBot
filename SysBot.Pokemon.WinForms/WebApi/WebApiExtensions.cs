@@ -51,14 +51,12 @@ public static class WebApiExtensions
 
             if (IsPortInUse(WebPort))
             {
-                LogUtil.LogInfo($"Web port {WebPort} is in use by another bot instance. Starting as slave...", "WebServer");
                 lock (_portLock)
                 {
                     _tcpPort = FindAvailablePort(8081);
                     ReservePort(_tcpPort);
                 }
                 StartTcpOnly();
-                LogUtil.LogInfo($"Slave instance started with TCP port {_tcpPort}. Monitoring master...", "WebServer");
                 
                 // Verify TCP is working
                 Task.Run(async () =>
@@ -70,7 +68,6 @@ public static class WebApiExtensions
                     }
                     else
                     {
-                        LogUtil.LogInfo($"TCP server successfully bound to port {_tcpPort}", "WebServer");
                     }
                 });
 
@@ -86,9 +83,7 @@ public static class WebApiExtensions
                 _tcpPort = FindAvailablePort(8081);
                 ReservePort(_tcpPort);
             }
-            LogUtil.LogInfo($"Starting as master web server on port {WebPort} with TCP port {_tcpPort}", "WebServer");
             StartFullServer();
-            LogUtil.LogInfo($"Web interface is available at http://localhost:{WebPort}", "WebServer");
 
             StartScheduledRestartTimer();
         }
@@ -166,7 +161,6 @@ public static class WebApiExtensions
                         }
 
                         File.Delete(portFile);
-                        LogUtil.LogInfo($"Cleaned up stale port file: {Path.GetFileName(portFile)}", "WebServer");
                     }
                 }
                 catch (Exception ex)
@@ -224,7 +218,6 @@ public static class WebApiExtensions
 
                     if (!IsPortInUse(WebPort))
                     {
-                        LogUtil.LogInfo("Master web server is down. Attempting to take over...", "WebServer");
 
                         await Task.Delay(random.Next(1000, 3000));
 
@@ -267,8 +260,6 @@ public static class WebApiExtensions
                 
                 _monitorCts?.Cancel();
                 _monitorCts = null;
-                LogUtil.LogInfo($"Successfully took over as master web server on port {WebPort}", "WebServer");
-                LogUtil.LogInfo($"Web interface is now available at http://localhost:{WebPort}", "WebServer");
             });
         }
         catch (Exception ex)
@@ -350,7 +341,6 @@ public static class WebApiExtensions
                         await Task.Delay(1000);
                         _server = new BotServer(_main!, WebPort, _tcpPort);
                         _server.Start();
-                        LogUtil.LogInfo("Web server restarted successfully", "WebServer");
                     }
                     catch (Exception restartEx)
                     {
@@ -396,7 +386,6 @@ public static class WebApiExtensions
                     _tcp = new TcpListener(System.Net.IPAddress.Any, _tcpPort);
                     _tcp.Start();
 
-                    LogUtil.LogInfo($"TCP listener started successfully on port {_tcpPort}", "TCP");
 
                     while (!_cts.Token.IsCancellationRequested)
                     {
@@ -420,7 +409,6 @@ public static class WebApiExtensions
                 catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse && retryCount < maxRetries - 1)
                 {
                     retryCount++;
-                    LogUtil.LogInfo($"TCP port {_tcpPort} in use, finding new port (attempt {retryCount}/{maxRetries})", "TCP");
 
                     // Wait a bit before retrying
                     await Task.Delay(random.Next(500, 1500));
@@ -561,14 +549,12 @@ public static class WebApiExtensions
 
                     if (updateAvailable && !string.IsNullOrEmpty(newVersion))
                     {
-                        LogUtil.LogInfo($"Starting automatic {botTypeString} update to version {newVersion}", "WebAPI");
                         
                         // Use automatic update instead of UpdateForm
                         await UpdateManager.PerformAutomaticUpdate(botTypeString, newVersion);
                     }
                     else
                     {
-                        LogUtil.LogInfo($"No {botTypeString} update available", "WebAPI");
                     }
                 }
                 catch (Exception ex)
@@ -918,7 +904,6 @@ public static class WebApiExtensions
                 writer.WriteLine(_tcpPort);
             }
 
-            LogUtil.LogInfo($"Created port file: {portFileName} with port {_tcpPort}", "WebServer");
         }
         catch (Exception ex)
         {
@@ -1064,7 +1049,6 @@ public static class WebApiExtensions
                 return;
 
             string operation = isPostRestart ? "restart" : "update";
-            LogUtil.LogInfo($"Post-{operation} startup detected. Waiting for all instances to come online...", operation == "restart" ? "RestartManager" : "UpdateManager");
 
             if (isPostRestart) File.Delete(restartFlagPath);
             if (isPostUpdate) File.Delete(updateFlagPath);
@@ -1080,7 +1064,6 @@ public static class WebApiExtensions
                 {
                     try
                     {
-                        LogUtil.LogInfo($"Post-{operation} check attempt {attempts + 1}/{maxAttempts}", operation == "restart" ? "RestartManager" : "UpdateManager");
 
                         mainForm.BeginInvoke((MethodInvoker)(() =>
                         {
@@ -1089,12 +1072,10 @@ public static class WebApiExtensions
                             sendAllMethod?.Invoke(mainForm, new object[] { BotControlCommand.Start });
                         }));
 
-                        LogUtil.LogInfo("Start All command sent to local bots", operation == "restart" ? "RestartManager" : "UpdateManager");
 
                         var instances = GetAllRunningInstances(0);
                         if (instances.Count > 0)
                         {
-                            LogUtil.LogInfo($"Found {instances.Count} remote instances online. Sending Start All command...", operation == "restart" ? "RestartManager" : "UpdateManager");
 
                             // Send start commands in parallel
                             var tasks = instances.Select(async instance =>
@@ -1104,7 +1085,6 @@ public static class WebApiExtensions
                                     await Task.Run(() =>
                                     {
                                         var response = BotServer.QueryRemote(instance.Port, "STARTALL");
-                                        LogUtil.LogInfo($"Start command sent to port {instance.Port}: {response}", operation == "restart" ? "RestartManager" : "UpdateManager");
                                     });
                                 }
                                 catch (Exception ex)
@@ -1116,7 +1096,6 @@ public static class WebApiExtensions
                             await Task.WhenAll(tasks);
                         }
 
-                        LogUtil.LogInfo($"Post-{operation} Start All commands completed successfully", operation == "restart" ? "RestartManager" : "UpdateManager");
                         break;
                     }
                     catch (Exception ex)
@@ -1228,7 +1207,6 @@ public static class WebApiExtensions
 
                 File.WriteAllText(lastRestartPath, now.ToString("yyyy-MM-dd"));
 
-                LogUtil.LogInfo("Scheduled restart triggered", "ScheduledRestart");
 
                 if (_main != null)
                 {

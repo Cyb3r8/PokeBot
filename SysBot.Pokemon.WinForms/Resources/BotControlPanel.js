@@ -1359,14 +1359,78 @@ class BotControlPanel {
             const data = await this.api.get(this.api.endpoints.instances);
             
             // Handle both 'instances' and 'Instances' key formats
-            const instances = data.instances || data.Instances || [];
+            const newInstances = data.instances || data.Instances || [];
+            const oldInstances = this.state.get('instances') || [];
             
-            this.state.set('instances', instances);
-            this.instanceRenderer.render(this.state.get('instances'));
-            this.dashboardManager.update(this.state.get('instances'));
+            // DEBUG: Log detailed instance data for version analysis
+            console.group('🔍 Bot Instances Debug Info');
+            console.log('Raw API Response:', data);
+            console.log('Parsed Instances:', newInstances);
+            
+            newInstances.forEach((instance, index) => {
+                console.group(`Bot ${index + 1}: ${instance.Name || 'Unknown'} (${instance.IP || '127.0.0.1'}:${instance.Port})`);
+                console.log('Version:', instance.Version);
+                console.log('BotType:', instance.BotType);
+                console.log('Mode:', instance.Mode);
+                console.log('ProcessId:', instance.ProcessId);
+                console.log('IsRemote:', instance.IsRemote);
+                console.log('Full Instance Object:', instance);
+                console.groupEnd();
+            });
+            console.groupEnd();
+            
+            // Detect new instances
+            this.detectNewInstances(oldInstances, newInstances);
+            
+            // Update state and render
+            this.state.set('instances', newInstances);
+            this.state.set('lastRefreshTime', Date.now());
+            this.instanceRenderer.render(newInstances);
+            this.dashboardManager.update(newInstances);
+            
         } catch (error) {
             console.error('API Error:', error);
             this.toastManager.error('Failed to load bot instances');
+        }
+    }
+
+    /**
+     * Detect and notify about new bot instances
+     * @param {Array} oldInstances - Previous instances
+     * @param {Array} newInstances - Current instances
+     */
+    detectNewInstances(oldInstances, newInstances) {
+        if (oldInstances.length === 0) {
+            // Initial load, don't show notifications
+            return;
+        }
+
+        const oldPorts = new Set(oldInstances.map(i => `${i.IP || '127.0.0.1'}:${i.Port}`));
+        const newlyAdded = newInstances.filter(i => 
+            !oldPorts.has(`${i.IP || '127.0.0.1'}:${i.Port}`)
+        );
+
+        const oldPortsArray = oldInstances.map(i => `${i.IP || '127.0.0.1'}:${i.Port}`);
+        const currentPorts = new Set(newInstances.map(i => `${i.IP || '127.0.0.1'}:${i.Port}`));
+        const removedInstances = oldInstances.filter(i => 
+            !currentPorts.has(`${i.IP || '127.0.0.1'}:${i.Port}`)
+        );
+
+        // Notify about new instances
+        newlyAdded.forEach(instance => {
+            const instanceName = instance.Name || `Bot on port ${instance.Port}`;
+            this.toastManager.success(`New bot detected: ${instanceName}`, `${instance.BotType || 'Bot'} • Version ${instance.Version || 'Unknown'}`);
+        });
+
+        // Notify about removed instances (going offline)
+        removedInstances.forEach(instance => {
+            const instanceName = instance.Name || `Bot on port ${instance.Port}`;
+            this.toastManager.warning(`Bot went offline: ${instanceName}`, `Last seen: ${instance.BotType || 'Bot'}`);
+        });
+
+        // If instances changed, ensure refresh indicator updates
+        if (newlyAdded.length > 0 || removedInstances.length > 0) {
+            this.refreshManager.updateIndicator(false);
         }
     }
 
@@ -1462,17 +1526,33 @@ class RefreshManager {
     constructor(app) {
         this.app = app;
         this.interval = null;
-        this.refreshRate = 5000; // 5 seconds
+        this.refreshRate = 2500; // 2.5 seconds - faster detection of new bots
+        this.fastRefreshRate = 1000; // 1 second for detection phase
+        this.normalRefreshRate = 2500; // 2.5 seconds for normal operation
+        this.lastInstanceCount = 0;
+        this.isRunning = false;
     }
 
     /**
      * Start auto-refresh
      */
     start() {
+        if (this.isRunning) return;
+        
         this.stop();
-        this.interval = setInterval(() => {
+        this.isRunning = true;
+        
+        console.log('🔄 Auto-refresh started');
+        
+        this.interval = setInterval(async () => {
             if (!this.shouldRefresh()) return;
-            this.app.refresh();
+            
+            try {
+                console.log('🔄 Auto-refreshing bot instances...');
+                await this.app.refresh();
+            } catch (error) {
+                console.error('Auto-refresh failed:', error);
+            }
         }, 1000);
     }
 
@@ -1484,6 +1564,7 @@ class RefreshManager {
             clearInterval(this.interval);
             this.interval = null;
         }
+        this.isRunning = false;
     }
 
     /**
@@ -1507,16 +1588,44 @@ class RefreshManager {
      * @returns {boolean} True if should refresh
      */
     shouldRefresh() {
-        const timeSinceLastRefresh = Date.now() - this.app.state.get('lastRefreshTime');
-        const hasOpenMenu = document.querySelector('.action-menu.show') !== null;
-        const actionsModal = document.getElementById('actions-modal');
-        const isActionsModalOpen = actionsModal && actionsModal.style.display === 'flex';
+        // Don't refresh if paused
+        if (this.app.state.get('refreshPaused')) {
+            return false;
+        }
         
-        return !hasOpenMenu && 
-               !isActionsModalOpen &&
-               !this.app.state.get('isInteracting') && 
-               !this.app.state.get('refreshPaused') && 
-               timeSinceLastRefresh >= this.refreshRate;
+        // Don't refresh if user is interacting
+        if (this.app.state.get('isInteracting')) {
+            return false;
+        }
+        
+        // Don't refresh if menus are open
+        const hasOpenMenu = document.querySelector('.action-menu.show, .modal[style*="display: flex"], .modal.show') !== null;
+        if (hasOpenMenu) {
+            return false;
+        }
+        
+        // Check time since last refresh
+        const timeSinceLastRefresh = Date.now() - (this.app.state.get('lastRefreshTime') || 0);
+        const currentInstanceCount = this.app.state.get('instances')?.length || 0;
+        
+        // Use fast refresh if instance count changed recently
+        if (this.lastInstanceCount !== currentInstanceCount) {
+            this.lastInstanceCount = currentInstanceCount;
+            this.refreshRate = this.fastRefreshRate;
+            
+            // Reset to normal rate after 30 seconds
+            setTimeout(() => {
+                this.refreshRate = this.normalRefreshRate;
+            }, 30000);
+        }
+        
+        const shouldRefresh = timeSinceLastRefresh >= this.refreshRate;
+        
+        if (shouldRefresh) {
+            console.log(`🔄 Should refresh: ${timeSinceLastRefresh}ms >= ${this.refreshRate}ms (instances: ${currentInstanceCount})`);
+        }
+        
+        return shouldRefresh;
     }
 
     /**
@@ -1534,10 +1643,57 @@ class RefreshManager {
      */
     updateIndicator(paused) {
         const indicator = document.querySelector('.refresh-indicator');
+        const refreshText = document.querySelector('.refresh-text');
+        
         if (indicator) {
             indicator.classList.toggle('paused', paused);
-            indicator.title = paused ? 'Auto-refresh paused' : 'Auto-refresh active';
+            const isFastRefresh = this.refreshRate === this.fastRefreshRate;
+            indicator.classList.toggle('fast-refresh', isFastRefresh);
+            
+            let title = 'Auto-refresh active';
+            if (paused) {
+                title = 'Auto-refresh paused';
+            } else if (isFastRefresh) {
+                title = 'Fast refresh active (detecting changes)';
+            }
+            indicator.title = title;
         }
+
+        // Update refresh text dynamically
+        if (refreshText) {
+            if (paused) {
+                refreshText.textContent = 'Paused';
+            } else if (this.refreshRate === this.fastRefreshRate) {
+                refreshText.textContent = 'Fast';
+            } else {
+                refreshText.textContent = 'Auto';
+            }
+        }
+    }
+
+    /**
+     * Trigger fast refresh mode when expecting new instances
+     */
+    expectChanges() {
+        this.refreshRate = this.fastRefreshRate;
+        this.updateIndicator(false);
+        
+        // Auto-reset to normal refresh after 60 seconds
+        setTimeout(() => {
+            if (this.refreshRate === this.fastRefreshRate) {
+                this.refreshRate = this.normalRefreshRate;
+                this.updateIndicator(false);
+            }
+        }, 60000);
+    }
+
+    /**
+     * Get current refresh rate in human readable format
+     * @returns {string} Refresh rate description
+     */
+    getRefreshRateDescription() {
+        const rate = this.refreshRate / 1000;
+        return `${rate}s refresh rate`;
     }
 }
 
@@ -1561,8 +1717,16 @@ class CommandManager {
     async sendGlobal(command) {
         this.app.toastManager.info(`Sending ${command} to all instances...`);
 
+        // Commands like 'start' or 'restart' may trigger new instance detection
+        if (['start', 'restart', 'resume'].includes(command.toLowerCase())) {
+            this.app.refreshManager.expectChanges();
+        }
+
+        // Format command for ALL operations (e.g., "start" -> "STARTALL")
+        const allCommand = `${command.toUpperCase()}ALL`;
+
         try {
-            const result = await this.app.api.post(this.app.api.endpoints.commandAll, { command });
+            const result = await this.app.api.post(this.app.api.endpoints.commandAll, { command: allCommand });
 
             const successCount = result.successfulCommands || 0;
             const totalCount = result.totalInstances || 0;
@@ -1754,6 +1918,9 @@ class UpdateManager {
         this.app.state.set('updateState', updateState);
 
         try {
+            // Trigger fast refresh mode to quickly detect new instances after update
+            this.app.refreshManager.expectChanges();
+            
             const response = await this.app.api.post(this.app.api.endpoints.updateAll, { force: true });
 
             if (!response.ok && !response.sessionId) {
@@ -2151,6 +2318,9 @@ class RestartManager {
 
         this.showModal('progress');
         document.getElementById('progress-modal-title').textContent = 'Restart in Progress';
+
+        // Trigger fast refresh mode to quickly detect instances coming back online
+        this.app.refreshManager.expectChanges();
 
         try {
             const result = await this.app.api.post(this.app.api.endpoints.restartAll);

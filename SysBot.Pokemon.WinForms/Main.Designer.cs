@@ -30,6 +30,11 @@ namespace SysBot.Pokemon.WinForms
                 trayIcon.Visible = false;
                 trayIcon.Dispose();
             }
+            if (disposing && animationTimer != null)
+            {
+                animationTimer.Stop();
+                animationTimer.Dispose();
+            }
             base.Dispose(disposing);
         }
 
@@ -40,8 +45,9 @@ namespace SysBot.Pokemon.WinForms
             this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Main));
 
-            animationTimer = new System.Windows.Forms.Timer(this.components);
-            animationTimer.Interval = 16;
+            // Initialize animation timer for logo
+            animationTimer = new System.Windows.Forms.Timer();
+            animationTimer.Interval = 30; // 30ms for smooth animation (~33 FPS)
             animationTimer.Tick += AnimationTimer_Tick;
             animationTimer.Start();
 
@@ -130,6 +136,7 @@ namespace SysBot.Pokemon.WinForms
             MinimumSize = new Size(900, 400);
             BackColor = Color.FromArgb(27, 40, 56);
             Font = new Font("Segoe UI", 9F, FontStyle.Regular);
+            FormBorderStyle = FormBorderStyle.Sizable;
             Icon = Resources.icon;
             Name = "Main";
             StartPosition = FormStartPosition.CenterScreen;
@@ -205,56 +212,59 @@ namespace SysBot.Pokemon.WinForms
             separator.Margin = new Padding(20, 20, 20, 20);
             navButtonsPanel.Controls.Add(separator);
 
-            var btnExit = new Button();
-            ConfigureNavButton(btnExit, "EXIT", 3, "Exit application", Color.FromArgb(236, 98, 95));
-            btnExit.Click += BtnExit_Click;
-            navButtonsPanel.Controls.Add(btnExit);
+            var btnTray = new Button();
+            ConfigureNavButton(btnTray, "SEND TO TRAY", 3, "Minimize to system tray", Color.FromArgb(102, 192, 244));
+            btnTray.Click += BtnTray_Click;
+            navButtonsPanel.Controls.Add(btnTray);
 
             // Sidebar Bottom Panel
+            var spacerPanel = new Panel();
+            spacerPanel.Dock = DockStyle.Top;
+            spacerPanel.Height = 8;  // Gap between combo and button
             sidebarBottomPanel.Controls.Add(btnUpdate);
+            sidebarBottomPanel.Controls.Add(spacerPanel);
             sidebarBottomPanel.Controls.Add(comboBox1);
             sidebarBottomPanel.Dock = DockStyle.Bottom;
-            sidebarBottomPanel.Height = 80;
-            sidebarBottomPanel.Location = new Point(0, 520);
+            sidebarBottomPanel.Height = 90;  // Increased height for better spacing
+            sidebarBottomPanel.Location = new Point(0, 510);
             sidebarBottomPanel.Name = "sidebarBottomPanel";
-            sidebarBottomPanel.Padding = new Padding(20, 10, 20, 10);
+            sidebarBottomPanel.Padding = new Padding(10, 5, 10, 10);
             sidebarBottomPanel.TabIndex = 0;
             sidebarBottomPanel.BackColor = Color.FromArgb(19, 23, 30);
-            sidebarBottomPanel.MaximumSize = new Size(240, 80);
+            sidebarBottomPanel.MaximumSize = new Size(240, 90);
             EnableDoubleBuffering(sidebarBottomPanel);
 
-            // Mode Selector ComboBox - Cuztom style
-            comboBox1.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            // Mode Selector ComboBox - Enhanced style
+            comboBox1.Dock = DockStyle.Top;
             comboBox1.BackColor = Color.FromArgb(32, 38, 48);
             comboBox1.DropDownStyle = ComboBoxStyle.DropDownList;
             comboBox1.FlatStyle = FlatStyle.Flat;
-            comboBox1.Font = new Font("Segoe UI", 8F);
+            comboBox1.Font = new Font("Segoe UI", 9F);
             comboBox1.ForeColor = Color.FromArgb(239, 239, 239);
-            comboBox1.Location = new Point(10, 10);
             comboBox1.Name = "comboBox1";
-            comboBox1.Size = new Size(200, 21);
-            comboBox1.TabIndex = 0;
+            comboBox1.TabIndex = 10;
+            comboBox1.Cursor = Cursors.Hand;
             comboBox1.SelectedIndexChanged += ComboBox1_SelectedIndexChanged;
-            comboBox1.MaximumSize = new Size(220, 21);
 
-            // Update Button - Cuztom style
-            btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            btnUpdate.BackColor = Color.FromArgb(32, 38, 48);
+            // Update Button - Modern style with proper spacing
+            var dpiScale = this.DeviceDpi / 96f;
+            btnUpdate.Dock = DockStyle.Bottom;
+            btnUpdate.BackColor = Color.FromArgb(45, 125, 200);
             btnUpdate.FlatAppearance.BorderSize = 0;
-            btnUpdate.FlatAppearance.MouseOverBackColor = Color.FromArgb(45, 51, 61);
+            btnUpdate.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 145, 220);
+            btnUpdate.FlatAppearance.MouseDownBackColor = Color.FromArgb(35, 105, 180);
             btnUpdate.FlatStyle = FlatStyle.Flat;
-            btnUpdate.Font = new Font("Segoe UI", 8F, FontStyle.Regular);
-            btnUpdate.ForeColor = Color.FromArgb(139, 179, 217);
-            btnUpdate.Location = new Point(10, 35);
+            btnUpdate.Font = ScaleFont(new Font("Segoe UI", 9F, FontStyle.Bold));
+            btnUpdate.ForeColor = Color.White;
+            btnUpdate.Height = 32;
+            btnUpdate.Margin = new Padding(0, 8, 0, 0);  // Add gap between combo and button
             btnUpdate.Name = "btnUpdate";
-            btnUpdate.Size = new Size(200, 35);
             btnUpdate.TabIndex = 1;
-            btnUpdate.Text = "";
+            btnUpdate.Text = "";  // Text will be set by ConfigureUpdateButton
             btnUpdate.UseVisualStyleBackColor = false;
             btnUpdate.Click += Updater_Click;
             btnUpdate.Cursor = Cursors.Hand;
             btnUpdate.Tag = new ButtonAnimationState();
-            btnUpdate.MaximumSize = new Size(220, 35);
             ConfigureHoverAnimation(btnUpdate);
             ConfigureUpdateButton();
 
@@ -305,17 +315,16 @@ namespace SysBot.Pokemon.WinForms
             controlButtonsPanel.Controls.Add(btnStop);
             controlButtonsPanel.Controls.Add(btnReboot);
             controlButtonsPanel.FlowDirection = FlowDirection.LeftToRight;
-            controlButtonsPanel.Location = new Point(contentPanel.Width - 350, 16);
+            controlButtonsPanel.Location = new Point(contentPanel.Width - 300, 18);
             controlButtonsPanel.Name = "controlButtonsPanel";
             controlButtonsPanel.TabIndex = 1;
             controlButtonsPanel.BackColor = Color.Transparent;
             controlButtonsPanel.WrapContents = false;
-            controlButtonsPanel.MaximumSize = new Size(400, 32);
 
-            // Enhanced Cuztom-style control buttons
-            ConfigureEnhancedControlButton(btnStart, "START ALL", Color.FromArgb(90, 186, 71), "\uE768");
-            ConfigureEnhancedControlButton(btnStop, "STOP ALL", Color.FromArgb(236, 98, 95), "\uE71A");
-            ConfigureEnhancedControlButton(btnReboot, "REBOOT", Color.FromArgb(102, 192, 244), "\uE777");
+            // Modern control buttons with clean design
+            ConfigureEnhancedControlButton(btnStart, "START", Color.FromArgb(90, 186, 71), "▶");
+            ConfigureEnhancedControlButton(btnStop, "STOP", Color.FromArgb(236, 98, 95), "■");
+            ConfigureEnhancedControlButton(btnReboot, "RESTART", Color.FromArgb(102, 192, 244), "↻");
 
             btnStart.Click += B_Start_Click;
             btnStop.Click += B_Stop_Click;
@@ -538,16 +547,16 @@ namespace SysBot.Pokemon.WinForms
             searchOptionsPanel.Controls.Add(btnWholeWord);
             searchOptionsPanel.FlowDirection = FlowDirection.LeftToRight;
             searchOptionsPanel.Height = 18;
-            searchOptionsPanel.Location = new Point(400, 13);
+            searchOptionsPanel.Location = new Point(400, 8);
             searchOptionsPanel.Name = "searchOptionsPanel";
-            searchOptionsPanel.Size = new Size(100, 18);
+            searchOptionsPanel.Size = new Size(100, 28);
             searchOptionsPanel.TabIndex = 1;
             searchOptionsPanel.BackColor = Color.FromArgb(22, 32, 45);
             searchOptionsPanel.WrapContents = false;
 
             ConfigureSearchOption(btnCaseSensitive, "Aa", "Case sensitive search");
             ConfigureSearchOption(btnRegex, ".*", "Regular expression search");
-            ConfigureSearchOption(btnWholeWord, "Ab", "Whole word search");
+            ConfigureSearchOption(btnWholeWord, "W", "Whole word search");
 
             // Search Status Label
             searchStatusLabel.AutoSize = true;
@@ -578,6 +587,7 @@ namespace SysBot.Pokemon.WinForms
             btnClearLogs.Click += BtnClearLogs_Click;
             ConfigureGlowButton(btnClearLogs);
             CreateRoundedButton(btnClearLogs);
+
 
             // Rich Text Box - Cuztom style
             RTB_Logs.BackColor = Color.FromArgb(32, 38, 48);
@@ -636,7 +646,6 @@ namespace SysBot.Pokemon.WinForms
             ResumeLayout(false);
 
             ConfigureSystemTray();
-            animationTimer.Start();
         }
 
         #endregion
@@ -718,11 +727,24 @@ namespace SysBot.Pokemon.WinForms
             checkBox.Font = ScaleFont(new Font("Segoe UI", 6.5F, FontStyle.Bold));
             checkBox.ForeColor = Color.FromArgb(200, 200, 200);
             checkBox.Margin = new Padding(0, 0, 3, 0);
-            checkBox.Size = new Size(22, 16);
+            checkBox.Size = new Size(26, 26);
             checkBox.Text = text;
             checkBox.TextAlign = ContentAlignment.MiddleCenter;
             checkBox.UseVisualStyleBackColor = false;
             checkBox.Cursor = Cursors.Hand;
+            
+            // Ensure checked state changes text color for better visibility
+            checkBox.CheckedChanged += (s, e) => 
+            {
+                if (checkBox.Checked)
+                {
+                    checkBox.ForeColor = Color.FromArgb(22, 32, 45); // Dark text on light background
+                }
+                else
+                {
+                    checkBox.ForeColor = Color.FromArgb(200, 200, 200); // Light text on dark background
+                }
+            };
 
             var toolTip = new ToolTip();
             toolTip.SetToolTip(checkBox, tooltip);
@@ -793,7 +815,7 @@ namespace SysBot.Pokemon.WinForms
                     0 => "\uE77B", // Bots icon
                     1 => "\uE713", // Settings icon
                     2 => "\uE7C3", // Logs icon
-                    3 => "\uE7E8", // Exit icon
+                    3 => "\uE74A", // Down arrow icon (minimize to tray)
                     _ => "\uE700"
                 };
 
@@ -811,7 +833,7 @@ namespace SysBot.Pokemon.WinForms
             };
 
             btn.Click += (s, e) => {
-                if (index >= 3) return; // Don't select exit button
+                if (index >= 3) return; // Don't select tray button
 
                 // Update all nav buttons
                 foreach (Button navBtn in navButtonsPanel.Controls.OfType<Button>())
@@ -851,22 +873,27 @@ namespace SysBot.Pokemon.WinForms
 
         private void ConfigureEnhancedControlButton(Button btn, string text, Color baseColor, string iconText)
         {
-            btn.BackColor = baseColor;
+            var dpiScale = this.DeviceDpi / 96f;
+            
+            // Modern glass-morphism design with responsive sizing
+            btn.BackColor = Color.FromArgb(25, 30, 40);
             btn.Cursor = Cursors.Hand;
             btn.FlatAppearance.BorderSize = 0;
+            btn.FlatAppearance.MouseDownBackColor = Color.Transparent;
+            btn.FlatAppearance.MouseOverBackColor = Color.Transparent;
             btn.FlatStyle = FlatStyle.Flat;
-            btn.Font = ScaleFont(new Font("Segoe UI", 8.5F, FontStyle.Bold));
-            btn.ForeColor = Color.FromArgb(22, 32, 45);
-            btn.Margin = new Padding(3, 0, 3, 0);
+            btn.Font = ScaleFont(new Font("Segoe UI Semibold", 9F));
+            btn.ForeColor = baseColor;
+            btn.Margin = new Padding(5, 0, 5, 0);
             btn.Name = $"btn{text.Replace(" ", "")}";
-            btn.Padding = new Padding(10, 5, 10, 5);
+            btn.Padding = new Padding((int)(12 * dpiScale), (int)(6 * dpiScale), (int)(12 * dpiScale), (int)(6 * dpiScale));
             btn.TabIndex = 0;
-            btn.Text = text;
+            btn.Text = $"{iconText}  {text}";
             btn.UseVisualStyleBackColor = false;
             btn.AutoSize = true;
             btn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            btn.MinimumSize = new Size(75, 28);
-            btn.MaximumSize = new Size(120, 32);
+            btn.MinimumSize = new Size((int)(85 * dpiScale), (int)(32 * dpiScale));
+            btn.MaximumSize = new Size((int)(120 * dpiScale), (int)(36 * dpiScale));
 
             var animState = new EnhancedButtonAnimationState
             {
@@ -876,102 +903,12 @@ namespace SysBot.Pokemon.WinForms
             };
             btn.Tag = animState;
 
+            // Create rounded corners with custom region
             CreateRoundedButton(btn);
             ConfigureEnhancedHoverAnimation(btn);
 
-            btn.Paint += (s, e) => {
-                var g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-
-                var state = btn.Tag as EnhancedButtonAnimationState;
-                var rect = btn.ClientRectangle;
-
-                // Draw background gradient
-                using (var bgBrush = new LinearGradientBrush(
-                    rect,
-                    Color.FromArgb(255, Math.Min(255, baseColor.R + 20), Math.Min(255, baseColor.G + 20), Math.Min(255, baseColor.B + 20)),
-                    baseColor,
-                    LinearGradientMode.Vertical))
-                {
-                    g.FillRectangle(bgBrush, rect);
-                }
-
-                // Draw glow effect
-                if (state.HoverProgress > 0 || state.PulseIntensity > 0)
-                {
-                    var glowIntensity = Math.Max(state.HoverProgress, state.PulseIntensity * 0.3f);
-                    var glowAlpha = (int)(60 * glowIntensity);
-
-                    for (int i = 1; i <= 3; i++)
-                    {
-                        var glowRect = new Rectangle(
-                            rect.X - i * 2,
-                            rect.Y - i * 2,
-                            rect.Width + i * 4,
-                            rect.Height + i * 4
-                        );
-
-                        using (var glowBrush = new SolidBrush(Color.FromArgb(glowAlpha / i, baseColor)))
-                        {
-                            using (var glowPath = new GraphicsPath())
-                            {
-                                GraphicsExtensions.AddRoundedRectangle(glowPath, glowRect, 4 + i);
-                                g.FillPath(glowBrush, glowPath);
-                            }
-                        }
-                    }
-                }
-
-                // Draw pulse effect when active
-                if (state.IsActive && state.PulseIntensity > 0)
-                {
-                    var pulseAlpha = (int)(40 * state.PulseIntensity);
-                    using (var pulseBrush = new SolidBrush(Color.FromArgb(pulseAlpha, 255, 255, 255)))
-                    {
-                        g.FillRectangle(pulseBrush, rect);
-                    }
-                }
-
-                // Draw icon and text
-                var iconSize = 10;
-                var iconX = 8;
-                var iconY = (rect.Height - iconSize) / 2;
-
-                using (var iconFont = new Font("Segoe MDL2 Assets", iconSize))
-                {
-                    var iconColor = state.HoverProgress > 0.5f
-                        ? Color.FromArgb(255, 255, 255)
-                        : btn.ForeColor;
-
-                    using (var iconBrush = new SolidBrush(iconColor))
-                    {
-                        var iconBounds = g.MeasureString(iconText, iconFont);
-                        var centeredIconY = (rect.Height - iconBounds.Height) / 2;
-                        g.DrawString(iconText, iconFont, iconBrush, iconX, centeredIconY);
-                    }
-                }
-
-                var textX = iconX + iconSize + 8;
-                var textY = (rect.Height - g.MeasureString(text, btn.Font).Height) / 2;
-
-                var textColor = state.HoverProgress > 0.5f
-                    ? Color.FromArgb(255, 255, 255)
-                    : btn.ForeColor;
-
-                using (var textBrush = new SolidBrush(textColor))
-                {
-                    g.DrawString(text, btn.Font, textBrush, textX, textY);
-                }
-
-                // Draw top highlight
-                using (var highlightPen = new Pen(Color.FromArgb(60, 255, 255, 255), 1))
-                {
-                    g.DrawLine(highlightPen, 3, 1, rect.Width - 3, 1);
-                }
-            };
-
-            btn.Resize += (s, e) => btn.Invalidate();
+            // Add custom paint for modern glass effect
+            btn.Paint += EnhancedControlButton_Paint;
         }
 
         private void ConfigureEnhancedHoverAnimation(Button btn)
@@ -981,25 +918,23 @@ namespace SysBot.Pokemon.WinForms
             btn.MouseEnter += (s, e) => {
                 animState.IsHovering = true;
                 animState.AnimationStart = DateTime.Now;
+                btn.Invalidate();
             };
 
             btn.MouseLeave += (s, e) => {
                 animState.IsHovering = false;
                 animState.AnimationStart = DateTime.Now;
+                btn.Invalidate();
             };
 
             btn.MouseDown += (s, e) => {
                 animState.IsPressed = true;
-                btn.BackColor = Color.FromArgb(
-                    Math.Max(0, animState.BaseColor.R - 30),
-                    Math.Max(0, animState.BaseColor.G - 30),
-                    Math.Max(0, animState.BaseColor.B - 30)
-                );
+                btn.Invalidate();
             };
 
             btn.MouseUp += (s, e) => {
                 animState.IsPressed = false;
-                btn.BackColor = animState.BaseColor;
+                btn.Invalidate();
             };
         }
 
@@ -1103,9 +1038,15 @@ namespace SysBot.Pokemon.WinForms
 
         private void ConfigureUpdateButton()
         {
+            // Scale-aware indicator sizing
+            var dpiScale = this.DeviceDpi / 96f;
+            var indicatorSize = (int)(8 * dpiScale);
+            var indicatorMargin = (int)(18 * dpiScale);
+            var indicatorTop = (int)(13 * dpiScale);
+            
             statusIndicator.BackColor = Color.FromArgb(100, 100, 100);
-            statusIndicator.Size = new Size(8, 8);
-            statusIndicator.Location = new Point(btnUpdate.ClientSize.Width - 18, 13);
+            statusIndicator.Size = new Size(indicatorSize, indicatorSize);
+            statusIndicator.Location = new Point(btnUpdate.ClientSize.Width - indicatorMargin, indicatorTop);
             statusIndicator.Name = "statusIndicator";
             statusIndicator.Enabled = false;
             statusIndicator.Anchor = AnchorStyles.Top | AnchorStyles.Right;
@@ -1147,7 +1088,10 @@ namespace SysBot.Pokemon.WinForms
             btnUpdate.Resize += (s, e) => {
                 if (statusIndicator != null && btnUpdate.Controls.Contains(statusIndicator))
                 {
-                    statusIndicator.Location = new Point(btnUpdate.ClientSize.Width - 18, 13);
+                    var dpiScale = this.DeviceDpi / 96f;
+                    var indicatorMargin = (int)(18 * dpiScale);
+                    var indicatorTop = (int)(13 * dpiScale);
+                    statusIndicator.Location = new Point(btnUpdate.ClientSize.Width - indicatorMargin, indicatorTop);
                 }
             };
 
@@ -1203,7 +1147,7 @@ namespace SysBot.Pokemon.WinForms
 
                     for (int i = 2; i > 0; i--)
                     {
-                        var glowAlpha = (int)(15 / i * (0.5 + 0.5 * Math.Sin(mainForm.pulsePhase)));
+                        var glowAlpha = 15 / i; // Animation removed
                         using var glowBrush = new SolidBrush(Color.FromArgb(glowAlpha, 102, 192, 244));
                         var glowRect = new Rectangle(
                             indicatorBounds.X - i * 2,
@@ -1616,6 +1560,103 @@ namespace SysBot.Pokemon.WinForms
             e.Graphics.DrawLine(pen, 0, headerPanel.Height - 1, headerPanel.Width, headerPanel.Height - 1);
         }
 
+        private void EnhancedControlButton_Paint(object sender, PaintEventArgs e)
+        {
+            var btn = sender as Button;
+            if (btn == null || btn.Tag == null) return;
+            
+            var animState = btn.Tag as EnhancedButtonAnimationState;
+            if (animState == null) return;
+
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            var rect = btn.ClientRectangle;
+            
+            // Create rounded rectangle path
+            using var path = new GraphicsPath();
+            int cornerRadius = 8;
+            path.AddArc(rect.X, rect.Y, cornerRadius, cornerRadius, 180, 90);
+            path.AddArc(rect.Right - cornerRadius - 1, rect.Y, cornerRadius, cornerRadius, 270, 90);
+            path.AddArc(rect.Right - cornerRadius - 1, rect.Bottom - cornerRadius - 1, cornerRadius, cornerRadius, 0, 90);
+            path.AddArc(rect.X, rect.Bottom - cornerRadius - 1, cornerRadius, cornerRadius, 90, 90);
+            path.CloseFigure();
+
+            // Draw gradient background with glass effect
+            var baseAlpha = animState.IsPressed ? 60 : (animState.IsHovering ? 45 : 30);
+            var glowAlpha = (int)(baseAlpha + (animState.HoverProgress * 25));
+            
+            using (var bgBrush = new LinearGradientBrush(rect, 
+                Color.FromArgb(glowAlpha, animState.BaseColor),
+                Color.FromArgb(glowAlpha / 2, animState.BaseColor),
+                LinearGradientMode.Vertical))
+            {
+                g.FillPath(bgBrush, path);
+            }
+
+            // Draw glow effect on hover
+            if (animState.HoverProgress > 0)
+            {
+                var glowSize = (int)(3 + animState.HoverProgress * 5);
+                using var glowPath = new GraphicsPath();
+                var glowRect = Rectangle.Inflate(rect, -1, -1);
+                glowPath.AddArc(glowRect.X, glowRect.Y, cornerRadius, cornerRadius, 180, 90);
+                glowPath.AddArc(glowRect.Right - cornerRadius - 1, glowRect.Y, cornerRadius, cornerRadius, 270, 90);
+                glowPath.AddArc(glowRect.Right - cornerRadius - 1, glowRect.Bottom - cornerRadius - 1, cornerRadius, cornerRadius, 0, 90);
+                glowPath.AddArc(glowRect.X, glowRect.Bottom - cornerRadius - 1, cornerRadius, cornerRadius, 90, 90);
+                glowPath.CloseFigure();
+
+                using var glowBrush = new SolidBrush(Color.FromArgb((int)(20 * animState.HoverProgress), animState.BaseColor));
+                for (int i = 0; i < glowSize; i++)
+                {
+                    g.FillPath(glowBrush, glowPath);
+                }
+            }
+
+            // Draw border with gradient
+            var borderAlpha = animState.IsHovering ? 200 : 120;
+            using (var borderPen = new Pen(Color.FromArgb(borderAlpha, animState.BaseColor), animState.IsPressed ? 2f : 1.5f))
+            {
+                g.DrawPath(borderPen, path);
+            }
+
+            // Draw inner highlight for glass effect
+            if (!animState.IsPressed)
+            {
+                var highlightRect = new Rectangle(rect.X + 2, rect.Y + 2, rect.Width - 4, rect.Height / 2);
+                using var highlightPath = new GraphicsPath();
+                highlightPath.AddArc(highlightRect.X, highlightRect.Y, cornerRadius - 2, cornerRadius - 2, 180, 90);
+                highlightPath.AddArc(highlightRect.Right - cornerRadius + 1, highlightRect.Y, cornerRadius - 2, cornerRadius - 2, 270, 90);
+                highlightPath.AddLine(highlightRect.Right - 1, highlightRect.Bottom, highlightRect.X, highlightRect.Bottom);
+                highlightPath.CloseFigure();
+
+                using var highlightBrush = new LinearGradientBrush(highlightRect,
+                    Color.FromArgb(30, 255, 255, 255),
+                    Color.FromArgb(5, 255, 255, 255),
+                    LinearGradientMode.Vertical);
+                g.FillPath(highlightBrush, highlightPath);
+            }
+
+            // Draw text with shadow for depth
+            var textColor = animState.IsHovering ? Color.White : animState.BaseColor;
+            var textRect = rect;
+            textRect.Offset(0, animState.IsPressed ? 1 : 0);
+
+            // Draw text shadow
+            using (var shadowBrush = new SolidBrush(Color.FromArgb(50, 0, 0, 0)))
+            {
+                textRect.Offset(1, 1);
+                TextRenderer.DrawText(g, btn.Text, btn.Font, textRect, Color.FromArgb(50, 0, 0, 0),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                textRect.Offset(-1, -1);
+            }
+
+            // Draw main text
+            TextRenderer.DrawText(g, btn.Text, btn.Font, textRect, textColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
         private void FLP_Bots_Paint(object sender, PaintEventArgs e)
         {
             var g = e.Graphics;
@@ -1663,8 +1704,37 @@ namespace SysBot.Pokemon.WinForms
             }
         }
 
+        private void AnimateGears()
+        {
+            // Ensure logoPanel exists
+            if (logoPanel == null || logoPanel.IsDisposed)
+                return;
+                
+            // Update gear rotations with proper gear ratio
+            float baseSpeed = 0.5f; // Slow speed when stopped
+            float activeSpeed = 3.0f; // Fast speed when running
+
+            float activityLevel = _totalBotCount > 0 ? (float)_runningBotCount / _totalBotCount : 0f;
+            float rotationSpeed = baseSpeed + (activeSpeed - baseSpeed) * activityLevel;
+
+            // Gear ratio based on teeth count (16:10 = 1.6:1)
+            float gearRatio = 16f / 10f;
+
+            _gearRotation1 += rotationSpeed;
+            _gearRotation2 -= rotationSpeed * gearRatio; // Smaller gear rotates faster
+
+            if (_gearRotation1 > 360) _gearRotation1 -= 360;
+            if (_gearRotation2 < -360) _gearRotation2 += 360;
+
+            // ALWAYS redraw logo panel to show continuous animations
+            logoPanel.Invalidate();
+        }
+        
         private void AnimationTimer_Tick(object sender, EventArgs e)
         {
+            // Update logo animations
+            AnimateGears();
+            
             // Handle button hover animations
             foreach (Control control in GetAllControls(this))
             {
@@ -1719,48 +1789,50 @@ namespace SysBot.Pokemon.WinForms
 
             // Update status indicator pulse
             UpdateStatusIndicatorPulse();
-
-            // Update gear rotations with proper gear ratio
-            float baseSpeed = 0.5f; // Slow speed when stopped
-            float activeSpeed = 3.0f; // Fast speed when running
-
-            float activityLevel = _totalBotCount > 0 ? (float)_runningBotCount / _totalBotCount : 0f;
-            float rotationSpeed = baseSpeed + (activeSpeed - baseSpeed) * activityLevel;
-
-            // Gear ratio based on teeth count (16:10 = 1.6:1)
-            float gearRatio = 16f / 10f;
-
-            _gearRotation1 += rotationSpeed;
-            _gearRotation2 -= rotationSpeed * gearRatio; // Smaller gear rotates faster
-
-            if (_gearRotation1 > 360) _gearRotation1 -= 360;
-            if (_gearRotation2 < -360) _gearRotation2 += 360;
-
-            // ALWAYS redraw logo panel to show continuous animations
-            logoPanel.Invalidate();
         }
 
         private void TransitionPanels(int index)
         {
+            // Ensure proper panel layout before transitioning
+            // This fixes the issue where panels are cut off when first visited after tray restore
+            contentPanel.SuspendLayout();
+            
+            // Hide all panels
             botsPanel.Visible = false;
             hubPanel.Visible = false;
             logsPanel.Visible = false;
-
-            contentPanel.Refresh();
-
+            
+            // Fix z-order to ensure headerPanel is on top
+            contentPanel.Controls.SetChildIndex(headerPanel, contentPanel.Controls.Count - 1);
+            
+            // Reset and reapply header docking
+            headerPanel.Dock = DockStyle.None;
+            headerPanel.Dock = DockStyle.Top;
+            headerPanel.Height = 60;
+            
+            // Show the selected panel
             switch (index)
             {
                 case 0:
+                    botsPanel.Dock = DockStyle.None;
+                    botsPanel.Dock = DockStyle.Fill;
                     botsPanel.Visible = true;
                     break;
                 case 1:
+                    hubPanel.Dock = DockStyle.None;
+                    hubPanel.Dock = DockStyle.Fill;
                     hubPanel.Visible = true;
                     break;
                 case 2:
+                    logsPanel.Dock = DockStyle.None;
+                    logsPanel.Dock = DockStyle.Fill;
                     logsPanel.Visible = true;
-                    logsPanel.Refresh();
                     break;
             }
+            
+            contentPanel.ResumeLayout(true);
+            contentPanel.PerformLayout();
+            contentPanel.Refresh();
         }
 
         private IEnumerable<Control> GetAllControls(Control container)
@@ -1930,7 +2002,7 @@ namespace SysBot.Pokemon.WinForms
         private Button btnClearLogs;
         private Label searchStatusLabel;
         private Panel statusIndicator;
-        private System.Windows.Forms.Timer animationTimer;
+        // Animation timer removed
         private ComboBox comboBox1;
 
         private NotifyIcon trayIcon;
@@ -1955,6 +2027,7 @@ namespace SysBot.Pokemon.WinForms
         private int _totalBotCount = 0;
         private float _gearRotation1 = 0f;
         private float _gearRotation2 = 0f;
+        private System.Windows.Forms.Timer animationTimer;
         #endregion
     }
 

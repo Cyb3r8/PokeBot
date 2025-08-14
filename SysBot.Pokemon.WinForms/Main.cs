@@ -1,7 +1,10 @@
 using PKHeX.Core;
 using SysBot.Base;
+using SysBot.Pokemon.Discord;
 using SysBot.Pokemon.Helpers;
 using SysBot.Pokemon.WinForms.Properties;
+using SysBot.Pokemon.WinForms.Controls;
+using SysBot.Pokemon.WinForms.Helpers;
 using SysBot.Pokemon.Z3;
 using System;
 using System.Collections.Generic;
@@ -13,6 +16,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -20,6 +24,21 @@ namespace SysBot.Pokemon.WinForms
 {
     public sealed partial class Main : Form
     {
+        // Windows API for forcing window frame update
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, 
+            int X, int Y, int cx, int cy, uint uFlags);
+        
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+        
+        // Performance optimization flags
+        private bool _suspendLayout = false;
+        private bool _deferredInvalidate = false;
+        private DateTime _lastInvalidate = DateTime.MinValue;
+        private const int INVALIDATE_THROTTLE_MS = 16; // 60 FPS max
         private readonly List<PokeBotState> Bots = [];
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -29,18 +48,15 @@ namespace SysBot.Pokemon.WinForms
 
         public readonly ISwitchConnectionAsync? SwitchConnection;
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public static bool IsUpdating { get; set; } = false;
+        public static volatile bool IsUpdating = false;
         private System.Windows.Forms.Timer? _autoSaveTimer;
         private bool _isFormLoading = true;
 
         private SearchManager _searchManager = null!;
+        private LogViewerForwarder _logViewerForwarder = null!;
 
         internal bool hasUpdate = false;
-        internal double pulsePhase = 0;
-        private Color lastIndicatorColor = Color.Empty;
-        private DateTime lastIndicatorUpdate = DateTime.MinValue;
-        private const int PULSE_UPDATE_INTERVAL_MS = 50;
-        private bool _isReallyClosing = false;
+        private bool _isRestoringFromTray = false;
         private LinearGradientBrush? _logoBrush;
         private Image? _currentModeImage = null;
 
@@ -52,7 +68,22 @@ namespace SysBot.Pokemon.WinForms
 
         public Main()
         {
+            // Enable DPI awareness
+            this.AutoScaleMode = AutoScaleMode.Dpi;
+            
             InitializeComponent();
+            
+            // Performance optimizations
+            SetStyle(ControlStyles.AllPaintingInWmPaint | 
+                    ControlStyles.UserPaint | 
+                    ControlStyles.DoubleBuffer | 
+                    ControlStyles.ResizeRedraw |
+                    ControlStyles.OptimizedDoubleBuffer, true);
+            UpdateStyles();
+            
+            // Apply dark mode to the main window
+            DarkModeHelper.SetDarkMode(this.Handle);
+            
             Load += async (sender, e) => await InitializeAsync();
 
             TC_Main = new TabControl { Visible = false };
@@ -64,6 +95,9 @@ namespace SysBot.Pokemon.WinForms
 
             _searchManager = new SearchManager(RTB_Logs, searchStatusLabel);
             ConfigureSearchEventHandlers();
+
+            // Initialize log viewer forwarder
+            _logViewerForwarder = new LogViewerForwarder();
         }
 
         private void ConfigureSearchEventHandlers()
@@ -71,6 +105,13 @@ namespace SysBot.Pokemon.WinForms
             btnCaseSensitive.CheckedChanged += (s, e) => _searchManager.ToggleCaseSensitive();
             btnRegex.CheckedChanged += (s, e) => _searchManager.ToggleRegex();
             btnWholeWord.CheckedChanged += (s, e) => _searchManager.ToggleWholeWord();
+        }
+
+        private void CreateNewConfig()
+        {
+            Config = new ProgramConfig();
+            RunningEnvironment = GetRunner(Config);
+            Config.Hub.Folder.CreateDefaults(Program.WorkingDirectory);
         }
 
         private async Task InitializeAsync()
@@ -87,31 +128,82 @@ namespace SysBot.Pokemon.WinForms
                 var (updateAvailable, _, _) = await UpdateChecker.CheckForUpdatesAsync();
                 hasUpdate = updateAvailable;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Update check failed: {ex.Message}", "Update");
+            }
 
             if (File.Exists(Program.ConfigPath))
             {
-                var lines = File.ReadAllText(Program.ConfigPath);
-                Config = JsonSerializer.Deserialize(lines, ProgramConfigContext.Default.ProgramConfig) ?? new ProgramConfig();
-                LogConfig.MaxArchiveFiles = Config.Hub.MaxArchiveFiles;
-                LogConfig.LoggingEnabled = Config.Hub.LoggingEnabled;
-                comboBox1.SelectedValue = (int)Config.Mode;
-
-                RunningEnvironment = GetRunner(Config);
-                foreach (var bot in Config.Bots)
+                try
                 {
-                    bot.Initialize();
-                    AddBot(bot);
+                    var lines = File.ReadAllText(Program.ConfigPath);
+
+                    // Check for corrupted file (null bytes)
+                    if (string.IsNullOrWhiteSpace(lines) || lines.Contains('\0'))
+                    {
+                        throw new JsonException("Config file contains null bytes or is empty");
+                    }
+
+                    Config = JsonSerializer.Deserialize(lines, ProgramConfigContext.Default.ProgramConfig) ?? new ProgramConfig();
+                    LogConfig.MaxArchiveFiles = Config.Hub.MaxArchiveFiles;
+                    LogConfig.LoggingEnabled = Config.Hub.LoggingEnabled;
+                    comboBox1.SelectedValue = (int)Config.Mode;
+
+                    RunningEnvironment = GetRunner(Config);
+                    foreach (var bot in Config.Bots)
+                    {
+                        bot.Initialize();
+                        AddBot(bot);
+                    }
+                }
+                catch (Exception ex) when (ex is JsonException || ex is NotSupportedException)
+                {
+                    LogUtil.LogError($"Config file is corrupted: {ex.Message}. Attempting to recover from backup.", "Config");
+
+                    // Try to recover from backup
+                    var backupPath = Program.ConfigPath + ".bak";
+                    if (File.Exists(backupPath))
+                    {
+                        try
+                        {
+                            var backupLines = File.ReadAllText(backupPath);
+                            Config = JsonSerializer.Deserialize(backupLines, ProgramConfigContext.Default.ProgramConfig) ?? new ProgramConfig();
+
+                            // Restore the main config from backup
+                            File.Copy(backupPath, Program.ConfigPath, true);
+                            LogUtil.LogInfo("Successfully recovered configuration from backup.", "Config");
+
+                            LogConfig.MaxArchiveFiles = Config.Hub.MaxArchiveFiles;
+                            LogConfig.LoggingEnabled = Config.Hub.LoggingEnabled;
+                            comboBox1.SelectedValue = (int)Config.Mode;
+
+                            RunningEnvironment = GetRunner(Config);
+                            foreach (var bot in Config.Bots)
+                            {
+                                bot.Initialize();
+                                AddBot(bot);
+                            }
+                        }
+                        catch (Exception backupEx)
+                        {
+                            LogUtil.LogError($"Failed to recover from backup: {backupEx.Message}. Creating new configuration.", "Config");
+                            CreateNewConfig();
+                        }
+                    }
+                    else
+                    {
+                        LogUtil.LogError("No backup file found. Creating new configuration.", "Config");
+                        CreateNewConfig();
+                    }
                 }
             }
             else
             {
-                Config = new ProgramConfig();
-                RunningEnvironment = GetRunner(Config);
-                Config.Hub.Folder.CreateDefaults(Program.WorkingDirectory);
+                CreateNewConfig();
             }
 
-            RTB_Logs.MaxLength = 32767;
+            RTB_Logs.MaxLength = int.MaxValue; // RichTextBox can handle much more than 32K
             LoadControls();
             Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "GenPKM.com" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
             trayIcon.Text = Text;
@@ -120,6 +212,8 @@ namespace SysBot.Pokemon.WinForms
             _isFormLoading = false;
             UpdateBackgroundImage(Config.Mode);
             UpdateStatusIndicatorColor();
+            
+            this.ActiveControl = null;
             LogUtil.LogInfo($"Bot initialization complete", "System");
             _ = Task.Run(() =>
             {
@@ -205,25 +299,63 @@ namespace SysBot.Pokemon.WinForms
             {
                 try
                 {
-                    foreach (var c in FLP_Bots.Controls.OfType<BotController>())
-                        c.ReadState();
+                    // Only update UI if form is visible and not suspended
+                    if (WindowState != FormWindowState.Minimized && !_suspendLayout)
+                    {
+                        // Batch updates to reduce UI thread blocking
+                        var controllers = FLP_Bots.Controls.OfType<BotController>().ToList();
+                        if (controllers.Count > 0)
+                        {
+                            BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                            {
+                                SuspendLayout();
+                                foreach (var c in controllers)
+                                    c.ReadState();
+                                ResumeLayout(false);
+                            }));
+                        }
+
+                        UpdateControlButtonStates();
+                    }
 
                     if (trayIcon != null && trayIcon.Visible && Config != null)
                     {
-                        var runningBots = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
-                        var totalBots = FLP_Bots.Controls.OfType<BotController>().Count();
-                        string botTitle = string.IsNullOrWhiteSpace(Config.Hub.BotName) ? "PokéBot" : Config.Hub.BotName;
-                        trayIcon.Text = totalBots == 0
-                            ? $"{botTitle} - No bots configured"
-                            : $"{botTitle} - {runningBots}/{totalBots} bots running";
-                    }
+                        // Get bot counts in a thread-safe manner
+                        int runningBots = 0;
+                        int totalBots = 0;
 
-                    UpdateControlButtonStates();
+                        if (InvokeRequired)
+                        {
+                            // Use BeginInvoke to avoid blocking the monitoring thread
+                            BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                            {
+                                runningBots = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
+                                totalBots = FLP_Bots.Controls.OfType<BotController>().Count();
+                                
+                                // Update tray icon text from UI thread
+                                string botTitle = string.IsNullOrWhiteSpace(Config.Hub.BotName) ? "PokéBot" : Config.Hub.BotName;
+                                trayIcon.Text = totalBots == 0
+                                    ? $"{botTitle} - No bots configured"
+                                    : $"{botTitle} - {runningBots}/{totalBots} bots running";
+                            }));
+                        }
+                        else
+                        {
+                            runningBots = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
+                            totalBots = FLP_Bots.Controls.OfType<BotController>().Count();
+                            
+                            string botTitle = string.IsNullOrWhiteSpace(Config.Hub.BotName) ? "PokéBot" : Config.Hub.BotName;
+                            trayIcon.Text = totalBots == 0
+                                ? $"{botTitle} - No bots configured"
+                                : $"{botTitle} - {runningBots}/{totalBots} bots running";
+                        }
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    LogUtil.LogError($"BotMonitor error: {ex.Message}", "Monitor");
                 }
-                await Task.Delay(2_000).ConfigureAwait(false);
+                await Task.Delay(3_000).ConfigureAwait(false); // Reduced frequency for better performance
             }
         }
 
@@ -235,8 +367,9 @@ namespace SysBot.Pokemon.WinForms
                 return;
             }
 
-            var runningBots = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
-            var totalBots = FLP_Bots.Controls.OfType<BotController>().Count();
+            var botControllers = FLP_Bots.Controls.OfType<BotController>().ToList(); // Cache the collection
+            var runningBots = botControllers.Count(c => c.GetBot()?.IsRunning ?? false);
+            var totalBots = botControllers.Count;
             var anyRunning = runningBots > 0;
 
             if (btnStart?.Tag is EnhancedButtonAnimationState startState)
@@ -263,7 +396,21 @@ namespace SysBot.Pokemon.WinForms
                 Interval = 10_000,
                 Enabled = true
             };
-            _autoSaveTimer.Tick += (s, e) => SaveCurrentConfig();
+            _autoSaveTimer.Tick += (s, e) =>
+            {
+                // Run auto-save on background thread to avoid blocking UI
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        SaveCurrentConfig();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogError($"Auto-save failed: {ex.Message}", "Config");
+                    }
+                });
+            };
             var routines = ((PokeRoutineType[])Enum.GetValues(typeof(PokeRoutineType))).Where(z => RunningEnvironment.SupportsRoutine(z));
             var list = routines.Select(z => new ComboItem(z.ToString(), (int)z)).ToArray();
             CB_Routine.DisplayMember = nameof(ComboItem.Text);
@@ -278,7 +425,7 @@ namespace SysBot.Pokemon.WinForms
             CB_Protocol.DataSource = listP;
             CB_Protocol.SelectedIndex = (int)SwitchProtocol.WiFi;
 
-            var gameModes = Enum.GetValues<ProgramMode>()
+            var gameModes = Enum.GetValues(typeof(ProgramMode))
                 .Cast<ProgramMode>()
                 .Where(m => m != ProgramMode.None)
                 .Select(mode => new { Text = mode.ToString(), Value = (int)mode })
@@ -287,8 +434,12 @@ namespace SysBot.Pokemon.WinForms
             comboBox1.ValueMember = "Value";
             comboBox1.DataSource = gameModes;
             comboBox1.SelectedValue = (int)Config.Mode;
+            
+            // Apply enhanced styling to the game selector
+            ConfigureGameSelector();
 
             LogUtil.Forwarders.Add(new TextBoxForwarder(RTB_Logs));
+            LogUtil.Forwarders.Add(_logViewerForwarder);
         }
 
         private ProgramConfig GetCurrentConfiguration()
@@ -304,13 +455,9 @@ namespace SysBot.Pokemon.WinForms
         private void Main_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (IsUpdating) return;
-
-            if (!_isReallyClosing && e.CloseReason == CloseReason.UserClosing)
-            {
-                e.Cancel = true;
-                MinimizeToTray();
-                return;
-            }
+            
+            // Let the form close normally when X button is clicked
+            // No longer minimizing to tray on close
             this.StopWebServer();
 
             try
@@ -335,11 +482,7 @@ namespace SysBot.Pokemon.WinForms
                 _autoSaveTimer.Dispose();
             }
 
-            if (animationTimer != null)
-            {
-                animationTimer.Stop();
-                animationTimer.Dispose();
-            }
+            // Animation timer removed
 
             if (trayIcon != null)
             {
@@ -364,7 +507,6 @@ namespace SysBot.Pokemon.WinForms
                     await Task.Delay(10).ConfigureAwait(false);
             }
 
-            _isReallyClosing = true;
             WindowState = FormWindowState.Minimized;
             ShowInTaskbar = false;
             bots.StopAll();
@@ -373,9 +515,37 @@ namespace SysBot.Pokemon.WinForms
 
         private void SaveCurrentConfig()
         {
-            var cfg = GetCurrentConfiguration();
-            var lines = JsonSerializer.Serialize(cfg, ProgramConfigContext.Default.ProgramConfig);
-            File.WriteAllText(Program.ConfigPath, lines);
+            try
+            {
+                var cfg = GetCurrentConfiguration();
+                var json = JsonSerializer.Serialize(cfg, ProgramConfigContext.Default.ProgramConfig);
+
+                // Use atomic write operation to prevent corruption
+                var tempPath = Program.ConfigPath + ".tmp";
+                var backupPath = Program.ConfigPath + ".bak";
+
+                // Write to temporary file first
+                File.WriteAllText(tempPath, json);
+
+                // Create backup of existing config if it exists
+                if (File.Exists(Program.ConfigPath))
+                {
+                    File.Copy(Program.ConfigPath, backupPath, true);
+                }
+
+                // Atomic rename operation
+                File.Move(tempPath, Program.ConfigPath, true);
+
+                // Delete backup after successful save
+                if (File.Exists(backupPath))
+                {
+                    try { File.Delete(backupPath); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to save config: {ex.Message}", "Config");
+            }
         }
 
         [JsonSerializable(typeof(ProgramConfig))]
@@ -395,23 +565,20 @@ namespace SysBot.Pokemon.WinForms
             SetButtonActiveState(btnStop, false);
             SetButtonActiveState(btnReboot, false);
 
+            // Keep the Bots tab selected when starting
             foreach (Button navBtn in navButtonsPanel.Controls.OfType<Button>())
             {
                 if (navBtn.Tag is NavButtonState state)
                 {
-                    state.IsSelected = false;
+                    // Keep Bots tab (index 0) selected, deselect others
+                    state.IsSelected = (state.Index == 0);
                     navBtn.Invalidate();
                 }
             }
 
-            if (btnNavLogs.Tag is NavButtonState logsState)
-            {
-                logsState.IsSelected = true;
-                btnNavLogs.Invalidate();
-            }
-
-            TransitionPanels(2);
-            titleLabel.Text = "System Logs";
+            // Stay on Bots tab instead of switching to Logs
+            TransitionPanels(0);
+            titleLabel.Text = "Bot Management";
 
             if (Bots.Count == 0)
                 WinFormsUtil.Alert("No bots configured, but all supporting services have been started.");
@@ -427,12 +594,15 @@ namespace SysBot.Pokemon.WinForms
                 await Task.Delay(3_500).ConfigureAwait(false);
                 SaveCurrentConfig();
                 LogUtil.LogInfo("Restarting all the consoles...", "Form");
+                
+                await Task.Delay(1_000).ConfigureAwait(false); // Give services time to fully stop
+                
                 RunningEnvironment.InitializeStart();
                 SendAll(BotControlCommand.RebootAndStop);
                 await Task.Delay(5_000).ConfigureAwait(false);
                 SendAll(BotControlCommand.Start);
 
-                BeginInvoke((MethodInvoker)(() =>
+                BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
                 {
                     SetButtonActiveState(btnReboot, false);
                     SetButtonActiveState(btnStop, true);
@@ -504,18 +674,10 @@ namespace SysBot.Pokemon.WinForms
             LogUtil.LogText($"All bots have been issued a command to {cmd}.");
         }
 
-        private void BtnExit_Click(object sender, EventArgs e)
+        private void BtnTray_Click(object sender, EventArgs e)
         {
-            var result = MessageBox.Show(
-                "Are you sure you want to exit PokéBot?",
-                "Exit Confirmation",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-            if (result == DialogResult.Yes)
-            {
-                _isReallyClosing = true;
-                Close();
-            }
+            // Send to Tray - minimizes to system tray
+            MinimizeToTray();
         }
 
         private void UpdateAddButtonPosition()
@@ -561,6 +723,7 @@ namespace SysBot.Pokemon.WinForms
             RTB_Logs.Clear();
             _searchManager.ClearSearch();
         }
+
 
         private void B_Stop_Click(object sender, EventArgs e)
         {
@@ -620,7 +783,7 @@ namespace SysBot.Pokemon.WinForms
             PokeRoutineExecutorBase newBot;
             try
             {
-                Console.WriteLine($"Current Mode ({Config.Mode}) does not support this type of bot ({cfg.CurrentRoutineType}).");
+                LogUtil.LogError($"Current Mode ({Config.Mode}) does not support this type of bot ({cfg.CurrentRoutineType}).", "Bot");
                 newBot = RunningEnvironment.CreateBotFromConfig(cfg);
             }
             catch
@@ -726,6 +889,66 @@ namespace SysBot.Pokemon.WinForms
             }
         }
 
+        private void ConfigureGameSelector()
+        {
+            // Enhanced styling for the game selector
+            comboBox1.DrawMode = DrawMode.OwnerDrawFixed;
+            comboBox1.ItemHeight = 24;
+            comboBox1.DrawItem += (sender, e) =>
+            {
+                if (e.Index < 0) return;
+
+                // Custom background colors
+                var backgroundColor = (e.State & DrawItemState.Selected) == DrawItemState.Selected
+                    ? Color.FromArgb(45, 125, 200)
+                    : Color.FromArgb(32, 38, 48);
+                    
+                using (var bgBrush = new SolidBrush(backgroundColor))
+                {
+                    e.Graphics.FillRectangle(bgBrush, e.Bounds);
+                }
+
+                // Get the item text properly
+                string text = "";
+                var item = comboBox1.Items[e.Index];
+                
+                if (item != null)
+                {
+                    // Handle anonymous type from DataSource
+                    var textProp = item.GetType().GetProperty("Text");
+                    if (textProp != null)
+                    {
+                        text = textProp.GetValue(item)?.ToString() ?? "";
+                    }
+                    else
+                    {
+                        text = item.ToString() ?? "";
+                    }
+                }
+
+                // Draw text with proper colors
+                var textColor = (e.State & DrawItemState.Selected) == DrawItemState.Selected
+                    ? Color.White
+                    : Color.FromArgb(239, 239, 239);
+                    
+                using (var textBrush = new SolidBrush(textColor))
+                {
+                    var textRect = new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
+                    var format = new StringFormat
+                    {
+                        LineAlignment = StringAlignment.Center,
+                        FormatFlags = StringFormatFlags.NoWrap
+                    };
+                    e.Graphics.DrawString(text, e.Font ?? comboBox1.Font, textBrush, textRect, format);
+                }
+                
+                if ((e.State & DrawItemState.Focus) == DrawItemState.Focus)
+                {
+                    e.DrawFocusRectangle();
+                }
+            };
+        }
+
         private void UpdateRunnerAndUI()
         {
             RunningEnvironment = GetRunner(Config);
@@ -734,16 +957,7 @@ namespace SysBot.Pokemon.WinForms
 
         private void UpdateStatusIndicatorPulse()
         {
-            var now = DateTime.Now;
-            if ((now - lastIndicatorUpdate).TotalMilliseconds < PULSE_UPDATE_INTERVAL_MS)
-                return;
-
-            lastIndicatorUpdate = now;
-
-            pulsePhase += 0.1;
-            if (pulsePhase > Math.PI * 2)
-                pulsePhase -= Math.PI * 2;
-
+            // Animation removed - just update color
             UpdateStatusIndicatorColor();
         }
 
@@ -751,37 +965,9 @@ namespace SysBot.Pokemon.WinForms
         {
             if (statusIndicator == null) return;
 
-            Color newColor;
-
-            if (hasUpdate)
-            {
-                double pulse = (Math.Sin(pulsePhase) + 1) / 2;
-                int minAlpha = 150;
-                int maxAlpha = 255;
-                int alpha = (int)(minAlpha + (maxAlpha - minAlpha) * pulse);
-                newColor = Color.FromArgb(alpha, 102, 192, 244);
-            }
-            else
-            {
-                newColor = Color.FromArgb(100, 100, 100);
-            }
-
-            if (newColor != lastIndicatorColor)
-            {
-                lastIndicatorColor = newColor;
-                statusIndicator.BackColor = newColor;
-                statusIndicator.Invalidate();
-
-                if (hasUpdate && btnUpdate != null)
-                {
-                    btnUpdate.Invalidate(new Rectangle(
-                        statusIndicator.Left - 10,
-                        statusIndicator.Top - 10,
-                        statusIndicator.Width + 20,
-                        statusIndicator.Height + 20
-                    ));
-                }
-            }
+            // Simple static color - no animation
+            Color newColor = hasUpdate ? Color.FromArgb(255, 102, 192, 244) : Color.FromArgb(100, 100, 100);
+            statusIndicator.BackColor = newColor;
         }
 
         private void UpdateBackgroundImage(ProgramMode mode)
@@ -819,36 +1005,119 @@ namespace SysBot.Pokemon.WinForms
 
         private void TrayMenuExit_Click(object sender, EventArgs e)
         {
-            _isReallyClosing = true;
             Close();
         }
 
         private void ShowFromTray()
         {
-            Show();
-            WindowState = FormWindowState.Normal;
+            // Set flag to prevent re-minimizing
+            _isRestoringFromTray = true;
+            
+            // Make visible in taskbar first
             ShowInTaskbar = true;
             trayIcon.Visible = false;
+            
+            // Show the form without suspending layout
+            Show();
+            
+            // Force normal window state
+            WindowState = FormWindowState.Normal;
+            
+            // Immediately restart the logo animation timer
+            if (animationTimer != null && !animationTimer.Enabled)
+            {
+                animationTimer.Start();
+            }
+            
+            // Ensure window is properly restored and focused
             BringToFront();
             Activate();
-
-            int headerHeight = headerPanel.Height + 10;
-
-            if (hubPanel.Padding.Top <= 40)
-                hubPanel.Padding = new Padding(40, headerHeight, 40, 40);
-
-            if (logsPanel.Padding.Top <= 40)
-                logsPanel.Padding = new Padding(40, headerHeight, 40, 40);
-
-            hubPanel.PerformLayout();
-            PG_Hub.Refresh();
-
-            logsPanel.PerformLayout();
-            RTB_Logs.Refresh();
+            Focus();
+            
+            // Apply dark mode after the window is fully shown
+            // Use BeginInvoke to ensure it happens after the UI thread processes the show event
+            BeginInvoke((MethodInvoker)(() =>
+            {
+                DarkModeHelper.SetDarkMode(this.Handle);
+                
+                // Force a repaint of the non-client area
+                SetWindowPos(this.Handle, IntPtr.Zero, 0, 0, 0, 0, 
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                    
+                // Force proper panel layout after tray restore
+                EnsurePanelLayout();
+            }));
+            
+            // Clear the flag after a delay
+            Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                _isRestoringFromTray = false;
+                _suspendLayout = false;
+            });
+            
+            // Update bots asynchronously without blocking UI
+            if (TC_Main.SelectedTab == Tab_Bots && FLP_Bots.Controls.Count > 0)
+            {
+                // Use BeginInvoke to update bots after UI has settled
+                BeginInvoke((MethodInvoker)(() =>
+                {
+                    // Resume animations for all bots
+                    foreach (var bot in FLP_Bots.Controls.OfType<BotController>())
+                    {
+                        bot.ResumeAnimations();
+                    }
+                    
+                    // Double-check logo animation timer is running
+                    if (animationTimer != null && !animationTimer.Enabled)
+                    {
+                        animationTimer.Stop(); // Stop first to reset
+                        animationTimer.Start();
+                    }
+                    
+                    // Schedule bot state updates asynchronously
+                    Task.Run(async () =>
+                    {
+                        // Small delay to let UI fully restore
+                        await Task.Delay(200);
+                        
+                        BeginInvoke((MethodInvoker)(() =>
+                        {
+                            // Only update visible bots in viewport
+                            var scrollPos = FLP_Bots.VerticalScroll.Value;
+                            var viewportHeight = FLP_Bots.ClientSize.Height;
+                            
+                            foreach (var bot in FLP_Bots.Controls.OfType<BotController>())
+                            {
+                                // Check if bot is in visible viewport
+                                if (bot.Top >= scrollPos - bot.Height && 
+                                    bot.Top <= scrollPos + viewportHeight)
+                                {
+                                    bot.ReadState();
+                                }
+                            }
+                        }));
+                    });
+                }));
+            }
         }
 
         private void MinimizeToTray()
         {
+            _suspendLayout = true;
+            
+            // Pause animations on all bot controllers before hiding
+            foreach (var bot in FLP_Bots.Controls.OfType<BotController>())
+            {
+                bot.PauseAnimations();
+            }
+            
+            // Stop logo animation timer
+            if (animationTimer != null && animationTimer.Enabled)
+            {
+                animationTimer.Stop();
+            }
+            
             Hide();
             ShowInTaskbar = false;
             trayIcon.Visible = true;
@@ -865,19 +1134,189 @@ namespace SysBot.Pokemon.WinForms
 
         private void Main_Resize(object sender, EventArgs e)
         {
-            if (WindowState == FormWindowState.Minimized && !_isReallyClosing)
+            // Don't minimize to tray on minimize button - only on close (X) button
+            // The minimize button should just minimize normally to taskbar
+            
+            // Handle window state changes to manage animations
+            if (WindowState == FormWindowState.Minimized)
             {
-                MinimizeToTray();
+                // Pause animations when minimized
+                foreach (var bot in FLP_Bots.Controls.OfType<BotController>())
+                {
+                    bot.PauseAnimations();
+                }
+                // Also pause logo animation timer
+                if (animationTimer != null && animationTimer.Enabled)
+                {
+                    animationTimer.Stop();
+                }
             }
+            else if (WindowState == FormWindowState.Normal || WindowState == FormWindowState.Maximized)
+            {
+                // Resume animations when restored
+                foreach (var bot in FLP_Bots.Controls.OfType<BotController>())
+                {
+                    bot.ResumeAnimations();
+                }
+                // Also resume logo animation timer
+                if (animationTimer != null && !animationTimer.Enabled)
+                {
+                    animationTimer.Start();
+                }
+            }
+        }
+
+        #endregion
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            
+            // Ensure animation timer is running when form is shown
+            if (animationTimer != null && !animationTimer.Enabled)
+            {
+                animationTimer.Start();
+            }
+            
+            // Reapply dark mode when form is shown (helps with tray restore)
+            DarkModeHelper.SetDarkMode(this.Handle);
+            
+            // Ensure panels are properly positioned
+            EnsurePanelLayout();
+        }
+        
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            
+            // Ensure animation timer is running when window is activated
+            if (animationTimer != null && !animationTimer.Enabled)
+            {
+                animationTimer.Start();
+            }
+            
+            // Apply dark mode when window is activated
+            if (_isRestoringFromTray)
+            {
+                DarkModeHelper.SetDarkMode(this.Handle);
+                // Also ensure proper panel layout when restoring from tray
+                EnsurePanelLayout();
+            }
+        }
+        
+        private void EnsurePanelLayout()
+        {
+            // Skip if controls aren't ready
+            if (contentPanel == null || headerPanel == null)
+                return;
+                
+            // Force proper layout recalculation
+            contentPanel.SuspendLayout();
+            
+            // Fix z-order: headerPanel must be last (on top) for DockStyle.Top to work correctly
+            // The order matters: panels docked with Fill should be added first, then Top-docked panels
+            contentPanel.Controls.SetChildIndex(botsPanel, 0);
+            contentPanel.Controls.SetChildIndex(hubPanel, 0);
+            contentPanel.Controls.SetChildIndex(logsPanel, 0);
+            contentPanel.Controls.SetChildIndex(headerPanel, contentPanel.Controls.Count - 1);
+            
+            // Reset docking to force recalculation
+            headerPanel.Dock = DockStyle.None;
+            botsPanel.Dock = DockStyle.None;
+            hubPanel.Dock = DockStyle.None;
+            logsPanel.Dock = DockStyle.None;
+            
+            // Force layout update
+            contentPanel.PerformLayout();
+            
+            // Reapply docking in correct order
+            headerPanel.Dock = DockStyle.Top;
+            headerPanel.Height = 60;
+            
+            botsPanel.Dock = DockStyle.Fill;
+            hubPanel.Dock = DockStyle.Fill;
+            logsPanel.Dock = DockStyle.Fill;
+            
+            contentPanel.ResumeLayout(true);
+            contentPanel.PerformLayout();
+        }
+        
+        protected override void OnDpiChanged(DpiChangedEventArgs e)
+        {
+            base.OnDpiChanged(e);
+            
+            // Update all controls for new DPI
+            DpiHelper.UpdateDpiForControl(this);
+            
+            // Update specific UI elements
+            if (statusIndicator != null)
+            {
+                var scaledSize = DpiHelper.Scale(20);
+                statusIndicator.Size = new Size(scaledSize, scaledSize);
+                statusIndicator.Location = DpiHelper.Scale(new Point(10, 6));
+            }
+            
+            // Update bot controllers
+            foreach (var controller in FLP_Bots.Controls.OfType<BotController>())
+            {
+                controller.PerformLayout();
+            }
+            
+            // Force layout update
+            PerformLayout();
+        }
+
+        #region Performance Optimization Methods
+
+        private void InvalidateThrottled(Control control, Rectangle? rect = null)
+        {
+            if (_suspendLayout) return;
+            
+            var now = DateTime.Now;
+            if ((now - _lastInvalidate).TotalMilliseconds < INVALIDATE_THROTTLE_MS)
+            {
+                _deferredInvalidate = true;
+                return;
+            }
+
+            _lastInvalidate = now;
+            if (rect.HasValue)
+                control.Invalidate(rect.Value);
+            else
+                control.Invalidate();
+                
+            if (_deferredInvalidate)
+            {
+                _deferredInvalidate = false;
+                // Schedule deferred invalidation
+                BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                {
+                    if (!_suspendLayout)
+                        control.Invalidate();
+                }));
+            }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_NCPAINT = 0x0085;
+            
+            // Skip non-client area painting for performance
+            if (m.Msg == WM_NCPAINT && WindowState != FormWindowState.Normal)
+            {
+                return;
+            }
+            
+            base.WndProc(ref m);
         }
 
         #endregion
     }
 
-    public sealed class SearchManager(RichTextBox textBox, Label statusLabel)
+    public sealed class SearchManager
     {
-        private readonly RichTextBox _textBox = textBox ?? throw new ArgumentNullException(nameof(textBox));
-        private readonly Label _statusLabel = statusLabel ?? throw new ArgumentNullException(nameof(statusLabel));
+        private readonly RichTextBox _textBox;
+        private readonly Label _statusLabel;
         private readonly List<SearchMatch> _matches = [];
         private int _currentIndex = -1;
         private string _lastSearchText = string.Empty;
@@ -887,6 +1326,12 @@ namespace SysBot.Pokemon.WinForms
 
         private readonly Color HighlightColor = Color.FromArgb(102, 192, 244);
         private readonly Color CurrentHighlightColor = Color.FromArgb(57, 255, 221);
+
+        public SearchManager(RichTextBox textBox, Label statusLabel)
+        {
+            _textBox = textBox ?? throw new ArgumentNullException(nameof(textBox));
+            _statusLabel = statusLabel ?? throw new ArgumentNullException(nameof(statusLabel));
+        }
 
         public void UpdateSearch(string searchText)
         {
@@ -925,6 +1370,7 @@ namespace SysBot.Pokemon.WinForms
         {
             ClearHighlights();
             _matches.Clear();
+            _matches.TrimExcess(); // Free up memory
             _currentIndex = -1;
             _lastSearchText = string.Empty;
             _statusLabel.Text = string.Empty;

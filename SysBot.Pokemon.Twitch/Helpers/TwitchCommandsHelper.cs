@@ -86,7 +86,7 @@ namespace SysBot.Pokemon.Twitch
                         }
 
                         var position = TwitchBot<T>.Info.CheckPosition(mUserId, uniqueTradeID, PokeRoutineType.LinkTrade);
-                        msg = $"@{username}: Added to the LinkTrade queue, unique ID: {detail.ID}. Current Position: {position.Position}";
+                        msg = $"@{username}: Added to the LinkTrade queue, unique ID: {detail.ID}. Current Position: {(position.Position == -1 ? 1 : position.Position)}";
 
                         var botct = TwitchBot<T>.Info.Hub.Bots.Count;
                         if (position.Position > botct)
@@ -95,18 +95,8 @@ namespace SysBot.Pokemon.Twitch
                             msg += $". Estimated: {eta:F1} minutes.";
                         }
                         
-                        // Send trade code immediately via whisper
-                        if (lgCode != null)
-                        {
-                            var codeString = string.Join(", ", lgCode);
-                            TwitchBot<T>.GetClient().SendWhisper(username, $"Your LGPE trade code: {codeString}");
-                            msg += " Your LGPE pictocodes have been sent via whisper.";
-                        }
-                        else
-                        {
-                            TwitchBot<T>.GetClient().SendWhisper(username, $"Your trade code: {code:0000 0000}");
-                            msg += " Your trade code has been sent via whisper.";
-                        }
+                        // Send trade code via whisper command instruction
+                        msg += " Whisper me with \"!code\" to get your trade code.";
                         
                         return true;
                     }

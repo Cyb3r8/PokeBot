@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json.Serialization;
 
 // ReSharper disable AutoPropertyCanBeMadeGetOnly.Global
 
@@ -20,11 +19,6 @@ public sealed class PokeTradeHubConfig : BaseConfig
     [Category(Integration)]
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public DiscordSettings Discord { get; set; } = new();
-
-    [Category(Integration), Description("Settings for Tailscale network integration and multi-node bot management.")]
-    [TypeConverter(typeof(ExpandableObjectConverter))]
-    [JsonInclude]
-    public TailscaleSettings Tailscale { get; set; } = new();
 
     [Category(BotTrade), Description("Settings for idle distribution trades.")]
     [TypeConverter(typeof(ExpandableObjectConverter))]

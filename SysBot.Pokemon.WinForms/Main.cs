@@ -2,10 +2,11 @@ using PKHeX.Core;
 using SysBot.Base;
 using SysBot.Pokemon.Discord;
 using SysBot.Pokemon.Helpers;
+using SysBot.Pokemon;
+using SysBot.Pokemon.WinForms.WebApi;
 using SysBot.Pokemon.WinForms.Properties;
 using SysBot.Pokemon.WinForms.Controls;
 using SysBot.Pokemon.WinForms.Helpers;
-using SysBot.Pokemon.WinForms.WebApi;
 using SysBot.Pokemon.Z3;
 using System;
 using System.Collections.Generic;
@@ -206,7 +207,7 @@ namespace SysBot.Pokemon.WinForms
 
             RTB_Logs.MaxLength = int.MaxValue; // RichTextBox can handle much more than 32K
             LoadControls();
-            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "hideoutpk.de" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
+            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "GenPKM.com" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
             trayIcon.Text = Text;
             _ = Task.Run(BotMonitor);
             InitUtil.InitializeStubs(Config.Mode);
@@ -634,55 +635,27 @@ namespace SysBot.Pokemon.WinForms
 
         private async void Updater_Click(object sender, EventArgs e)
         {
-            try
+            var (updateAvailable, updateRequired, newVersion) = await UpdateChecker.CheckForUpdatesAsync();
+            hasUpdate = updateAvailable;
+
+            if (!updateAvailable)
             {
-                var (updateAvailable, updateRequired, newVersion) = await UpdateChecker.CheckForUpdatesAsync();
-                hasUpdate = updateAvailable;
+                var result = MessageBox.Show(
+                    "You are on the latest version. Would you like to re-download the current version?",
+                    "Update Check",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
 
-                if (!updateAvailable)
+                if (result == DialogResult.Yes)
                 {
-                    var result = MessageBox.Show(
-                        "You are on the latest version. Would you like to re-download the current version?",
-                        "Update Check",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question);
-
-                    if (result == DialogResult.Yes)
-                    {
-                        // Use automatic update instead of dialog
-                        WinFormsUtil.Alert("Starting automatic update. The application will restart when complete.");
-                        
-                        // Trigger automatic update
-                        _ = Task.Run(async () =>
-                        {
-                            await UpdateManager.PerformAutomaticUpdate("PokeBot", newVersion ?? "latest");
-                        });
-                    }
-                }
-                else
-                {
-                    // Show available update info and start automatic update
-                    var result = MessageBox.Show(
-                        $"Update available: {newVersion}\n\nStart automatic update now?",
-                        "Update Available",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Question);
-                        
-                    if (result == DialogResult.Yes)
-                    {
-                        WinFormsUtil.Alert("Starting automatic update. The application will restart when complete.");
-                        
-                        // Trigger automatic update
-                        _ = Task.Run(async () =>
-                        {
-                            await UpdateManager.PerformAutomaticUpdate("PokeBot", newVersion ?? "latest");
-                        });
-                    }
+                    UpdateForm updateForm = new(updateRequired, newVersion, updateAvailable: false);
+                    updateForm.ShowDialog();
                 }
             }
-            catch (Exception ex)
+            else
             {
-                WinFormsUtil.Error($"Update check failed: {ex.Message}");
+                UpdateForm updateForm = new(updateRequired, newVersion, updateAvailable: true);
+                updateForm.ShowDialog();
             }
         }
 
@@ -981,7 +954,7 @@ namespace SysBot.Pokemon.WinForms
         private void UpdateRunnerAndUI()
         {
             RunningEnvironment = GetRunner(Config);
-            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "hideoutpk.de" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
+            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "GenPKM.com" : Config.Hub.BotName)} {PokeBot.Version} ({Config.Mode})";
         }
 
         private void UpdateStatusIndicatorPulse()

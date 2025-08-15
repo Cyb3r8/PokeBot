@@ -570,17 +570,6 @@ class InstanceRenderer {
     }
 
     /**
-     * Get property value with case-insensitive fallback
-     * @param {Object} obj - Object to get property from
-     * @param {string} prop - Property name (lowercase)
-     * @returns {*} Property value
-     */
-    getProperty(obj, prop) {
-        // Try lowercase first, then capitalized
-        return obj[prop] || obj[prop.charAt(0).toUpperCase() + prop.slice(1)] || undefined;
-    }
-
-    /**
      * Render single instance card HTML
      * @param {Object} instance - Instance data
      * @param {number} index - Card index
@@ -588,7 +577,7 @@ class InstanceRenderer {
      * @returns {string} HTML string
      */
     renderInstanceCard(instance, index, isMobile) {
-        const isOnline = this.getProperty(instance, 'isOnline') || this.getProperty(instance, 'isonline') || false;
+        const isOnline = instance.isOnline || false;
         const statusClass = isOnline ? 'online' : 'offline';
         const statusIndicator = isOnline ?
             '<span class="online-indicator"></span>Connected' :
@@ -596,56 +585,35 @@ class InstanceRenderer {
 
         const instanceStatus = this.statusManager.getInstanceStatus(instance);
         const animationClass = isMobile ? '' : 'animate-in';
-        const port = this.getProperty(instance, 'port');
-        const ip = (instance.ip || instance.IP || instance.Ip || '127.0.0.1');
-        const name = this.getProperty(instance, 'name');
-        const botType = this.getProperty(instance, 'botType') || this.getProperty(instance, 'bottype') || 'Unknown';
-        const isRemote = this.getProperty(instance, 'isRemote') || this.getProperty(instance, 'isremote') || this.getProperty(instance, 'IsRemote') || false;
-        
-        // Bot type styling
-        const getBotTypeIcon = (type) => {
-            switch(type.toLowerCase()) {
-                case 'pokebot': return '🤖';
-                case 'raidbot': return '⚔️';
-                default: return '❓';
-            }
-        };
-        
-        const locationIcon = isRemote ? '🌐' : '🏠';
-
-        const remoteClass = isRemote ? 'remote-instance' : '';
 
         return `
-            <div class="instance-card ${statusClass} ${animationClass} bot-type-${botType.toLowerCase()} ${remoteClass}" 
-                 data-port="${port}" data-ip="${ip}"
+            <div class="instance-card ${statusClass} ${animationClass}" 
+                 data-port="${instance.port}" 
                  style="--card-index: ${index}">
                 <div class="instance-header">
                     <h3 class="instance-title">
-                        ${getBotTypeIcon(botType)} ${this.escapeHtml(name)}
+                        ${this.escapeHtml(instance.name)}
                         <span class="instance-status-badge ${instanceStatus.status}">
                             ${instanceStatus.text}
                         </span>
                     </h3>
-                    <div class="instance-badges">
-                        <span class="instance-badge port-badge">Port ${port}</span>
-                        <span class="instance-badge type-badge">${locationIcon} ${botType}</span>
-                    </div>
+                    <span class="instance-badge">Port ${instance.port}</span>
                 </div>
                 <div class="instance-body">
                     ${this.renderInstanceInfo(instance, statusIndicator)}
                     ${this.renderBotStatus(instance)}
                     <div class="instance-controls">
                         <button class="action-menu-button" 
-                                data-port="${port}" data-ip="${ip}"
+                                data-port="${instance.port}" 
                                 ${!isOnline ? 'disabled' : ''}
                                 aria-label="Open actions menu">
                             ⚡ Actions
                         </button>
                         <button class="update-button" 
-                                data-port="${port}" data-ip="${ip}"
+                                data-port="${instance.port}" 
                                 ${!isOnline ? 'disabled' : ''}
                                 aria-label="Update instance"
-                                onclick="window.botControlPanel.updateManager.updateInstance(${port})">
+                                onclick="window.botControlPanel.updateManager.updateInstance(${instance.port})">
                             🔄 Update
                         </button>
                     </div>
@@ -661,46 +629,19 @@ class InstanceRenderer {
      * @returns {string} HTML string
      */
     renderInstanceInfo(instance, statusIndicator) {
-        const version = this.getProperty(instance, 'version');
-        const mode = this.getProperty(instance, 'mode');
-        const processId = this.getProperty(instance, 'processId') || this.getProperty(instance, 'processid');
-        const botType = this.getProperty(instance, 'botType') || this.getProperty(instance, 'bottype') || 'Unknown';
-        const ip = this.getProperty(instance, 'ip') || this.getProperty(instance, 'IP') || '127.0.0.1';
-        const isRemote = this.getProperty(instance, 'isRemote') || this.getProperty(instance, 'isremote') || this.getProperty(instance, 'IsRemote') || false;
-        
-        // Enhanced bot type display with icons
-        const getBotTypeIcon = (type) => {
-            switch(type.toLowerCase()) {
-                case 'pokebot': return '🤖';
-                case 'raidbot': return '⚔️';
-                default: return '❓';
-            }
-        };
-        
-        const botTypeIcon = getBotTypeIcon(botType);
-        const locationIcon = isRemote ? '🌐' : '🏠';
-        
         return `
             <div class="instance-info">
                 <div class="info-item">
-                    <span class="info-label">Type</span>
-                    <span class="info-value">${botTypeIcon} ${this.escapeHtml(botType)}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">IP Address</span>
-                    <span class="info-value">${locationIcon} ${this.escapeHtml(ip)}</span>
-                </div>
-                <div class="info-item">
                     <span class="info-label">Version</span>
-                    <span class="info-value">${this.escapeHtml(version)}</span>
+                    <span class="info-value">${this.escapeHtml(instance.version)}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Mode</span>
-                    <span class="info-value">${this.escapeHtml(mode)}</span>
+                    <span class="info-value">${this.escapeHtml(instance.mode)}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Process ID</span>
-                    <span class="info-value">${processId}</span>
+                    <span class="info-value">${instance.processId}</span>
                 </div>
                 <div class="info-item">
                     <span class="info-label">Connection</span>
@@ -862,9 +803,6 @@ class DashboardManager {
         this.animateValue('active-bots', stats.activeBots);
         this.animateValue('idle-bots', stats.idleBots);
         this.animateValue('online-instances', stats.onlineInstances);
-        this.animateValue('pokebot-instances', stats.pokeBotInstances);
-        this.animateValue('raidbot-instances', stats.raidBotInstances);
-        this.animateValue('remote-instances', stats.remoteInstances);
     }
 
     /**
@@ -877,36 +815,13 @@ class DashboardManager {
             totalInstances: instances.length,
             onlineInstances: 0,
             activeBots: 0,
-            idleBots: 0,
-            pokeBotInstances: 0,
-            raidBotInstances: 0,
-            remoteInstances: 0
+            idleBots: 0
         };
 
         const statusManager = new StatusManager();
-        
-        // Local helper function for consistent property access
-        const getProperty = (obj, prop) => {
-            return obj[prop] || obj[prop.charAt(0).toUpperCase() + prop.slice(1)] || undefined;
-        };
 
         instances.forEach(instance => {
             if (instance.isOnline) stats.onlineInstances++;
-
-            // Bot type counting (case-insensitive) - use consistent property access
-            const botType = (getProperty(instance, 'botType') || getProperty(instance, 'bottype') || 'Unknown').toLowerCase();
-            
-            if (botType === 'pokebot') {
-                stats.pokeBotInstances++;
-            } else if (botType === 'raidbot') {
-                stats.raidBotInstances++;
-            }
-
-            // Remote instance counting
-            const isRemote = instance.isRemote || instance.IsRemote || false;
-            if (isRemote) {
-                stats.remoteInstances++;
-            }
 
             if (instance.botStatuses && instance.botStatuses.length > 0) {
                 instance.botStatuses.forEach(bot => {
@@ -1145,11 +1060,7 @@ class BotControlPanel {
         if (target.classList.contains('action-menu-button')) {
             e.preventDefault();
             const port = target.getAttribute('data-port');
-            const ip = target.getAttribute('data-ip') || '127.0.0.1';
-            if (port) {
-                this.state.set('currentActionIp', ip);
-                this.toggleActionMenu(port);
-            }
+            if (port) this.toggleActionMenu(port);
             return;
         }
 
@@ -1289,8 +1200,6 @@ class BotControlPanel {
             this.logViewer.open(parseInt(port));
         } else if (action === 'remote') {
             this.remoteControl.open(parseInt(port));
-        } else if (action === 'update') {
-            this.updateManager.updateInstance(parseInt(port));
         } else {
             this.commandManager.sendToInstance(parseInt(port), action);
         }
@@ -1357,80 +1266,11 @@ class BotControlPanel {
     async refresh() {
         try {
             const data = await this.api.get(this.api.endpoints.instances);
-            
-            // Handle both 'instances' and 'Instances' key formats
-            const newInstances = data.instances || data.Instances || [];
-            const oldInstances = this.state.get('instances') || [];
-            
-            // DEBUG: Log detailed instance data for version analysis
-            console.group('🔍 Bot Instances Debug Info');
-            console.log('Raw API Response:', data);
-            console.log('Parsed Instances:', newInstances);
-            
-            newInstances.forEach((instance, index) => {
-                console.group(`Bot ${index + 1}: ${instance.Name || 'Unknown'} (${instance.IP || '127.0.0.1'}:${instance.Port})`);
-                console.log('Version:', instance.Version);
-                console.log('BotType:', instance.BotType);
-                console.log('Mode:', instance.Mode);
-                console.log('ProcessId:', instance.ProcessId);
-                console.log('IsRemote:', instance.IsRemote);
-                console.log('Full Instance Object:', instance);
-                console.groupEnd();
-            });
-            console.groupEnd();
-            
-            // Detect new instances
-            this.detectNewInstances(oldInstances, newInstances);
-            
-            // Update state and render
-            this.state.set('instances', newInstances);
-            this.state.set('lastRefreshTime', Date.now());
-            this.instanceRenderer.render(newInstances);
-            this.dashboardManager.update(newInstances);
-            
+            this.state.set('instances', data.instances || []);
+            this.instanceRenderer.render(this.state.get('instances'));
+            this.dashboardManager.update(this.state.get('instances'));
         } catch (error) {
-            console.error('API Error:', error);
             this.toastManager.error('Failed to load bot instances');
-        }
-    }
-
-    /**
-     * Detect and notify about new bot instances
-     * @param {Array} oldInstances - Previous instances
-     * @param {Array} newInstances - Current instances
-     */
-    detectNewInstances(oldInstances, newInstances) {
-        if (oldInstances.length === 0) {
-            // Initial load, don't show notifications
-            return;
-        }
-
-        const oldPorts = new Set(oldInstances.map(i => `${i.IP || '127.0.0.1'}:${i.Port}`));
-        const newlyAdded = newInstances.filter(i => 
-            !oldPorts.has(`${i.IP || '127.0.0.1'}:${i.Port}`)
-        );
-
-        const oldPortsArray = oldInstances.map(i => `${i.IP || '127.0.0.1'}:${i.Port}`);
-        const currentPorts = new Set(newInstances.map(i => `${i.IP || '127.0.0.1'}:${i.Port}`));
-        const removedInstances = oldInstances.filter(i => 
-            !currentPorts.has(`${i.IP || '127.0.0.1'}:${i.Port}`)
-        );
-
-        // Notify about new instances
-        newlyAdded.forEach(instance => {
-            const instanceName = instance.Name || `Bot on port ${instance.Port}`;
-            this.toastManager.success(`New bot detected: ${instanceName}`, `${instance.BotType || 'Bot'} • Version ${instance.Version || 'Unknown'}`);
-        });
-
-        // Notify about removed instances (going offline)
-        removedInstances.forEach(instance => {
-            const instanceName = instance.Name || `Bot on port ${instance.Port}`;
-            this.toastManager.warning(`Bot went offline: ${instanceName}`, `Last seen: ${instance.BotType || 'Bot'}`);
-        });
-
-        // If instances changed, ensure refresh indicator updates
-        if (newlyAdded.length > 0 || removedInstances.length > 0) {
-            this.refreshManager.updateIndicator(false);
         }
     }
 
@@ -1526,33 +1366,17 @@ class RefreshManager {
     constructor(app) {
         this.app = app;
         this.interval = null;
-        this.refreshRate = 2500; // 2.5 seconds - faster detection of new bots
-        this.fastRefreshRate = 1000; // 1 second for detection phase
-        this.normalRefreshRate = 2500; // 2.5 seconds for normal operation
-        this.lastInstanceCount = 0;
-        this.isRunning = false;
+        this.refreshRate = 5000; // 5 seconds
     }
 
     /**
      * Start auto-refresh
      */
     start() {
-        if (this.isRunning) return;
-        
         this.stop();
-        this.isRunning = true;
-        
-        console.log('🔄 Auto-refresh started');
-        
-        this.interval = setInterval(async () => {
+        this.interval = setInterval(() => {
             if (!this.shouldRefresh()) return;
-            
-            try {
-                console.log('🔄 Auto-refreshing bot instances...');
-                await this.app.refresh();
-            } catch (error) {
-                console.error('Auto-refresh failed:', error);
-            }
+            this.app.refresh();
         }, 1000);
     }
 
@@ -1564,7 +1388,6 @@ class RefreshManager {
             clearInterval(this.interval);
             this.interval = null;
         }
-        this.isRunning = false;
     }
 
     /**
@@ -1588,44 +1411,16 @@ class RefreshManager {
      * @returns {boolean} True if should refresh
      */
     shouldRefresh() {
-        // Don't refresh if paused
-        if (this.app.state.get('refreshPaused')) {
-            return false;
-        }
+        const timeSinceLastRefresh = Date.now() - this.app.state.get('lastRefreshTime');
+        const hasOpenMenu = document.querySelector('.action-menu.show') !== null;
+        const actionsModal = document.getElementById('actions-modal');
+        const isActionsModalOpen = actionsModal && actionsModal.style.display === 'flex';
         
-        // Don't refresh if user is interacting
-        if (this.app.state.get('isInteracting')) {
-            return false;
-        }
-        
-        // Don't refresh if menus are open
-        const hasOpenMenu = document.querySelector('.action-menu.show, .modal[style*="display: flex"], .modal.show') !== null;
-        if (hasOpenMenu) {
-            return false;
-        }
-        
-        // Check time since last refresh
-        const timeSinceLastRefresh = Date.now() - (this.app.state.get('lastRefreshTime') || 0);
-        const currentInstanceCount = this.app.state.get('instances')?.length || 0;
-        
-        // Use fast refresh if instance count changed recently
-        if (this.lastInstanceCount !== currentInstanceCount) {
-            this.lastInstanceCount = currentInstanceCount;
-            this.refreshRate = this.fastRefreshRate;
-            
-            // Reset to normal rate after 30 seconds
-            setTimeout(() => {
-                this.refreshRate = this.normalRefreshRate;
-            }, 30000);
-        }
-        
-        const shouldRefresh = timeSinceLastRefresh >= this.refreshRate;
-        
-        if (shouldRefresh) {
-            console.log(`🔄 Should refresh: ${timeSinceLastRefresh}ms >= ${this.refreshRate}ms (instances: ${currentInstanceCount})`);
-        }
-        
-        return shouldRefresh;
+        return !hasOpenMenu && 
+               !isActionsModalOpen &&
+               !this.app.state.get('isInteracting') && 
+               !this.app.state.get('refreshPaused') && 
+               timeSinceLastRefresh >= this.refreshRate;
     }
 
     /**
@@ -1643,57 +1438,10 @@ class RefreshManager {
      */
     updateIndicator(paused) {
         const indicator = document.querySelector('.refresh-indicator');
-        const refreshText = document.querySelector('.refresh-text');
-        
         if (indicator) {
             indicator.classList.toggle('paused', paused);
-            const isFastRefresh = this.refreshRate === this.fastRefreshRate;
-            indicator.classList.toggle('fast-refresh', isFastRefresh);
-            
-            let title = 'Auto-refresh active';
-            if (paused) {
-                title = 'Auto-refresh paused';
-            } else if (isFastRefresh) {
-                title = 'Fast refresh active (detecting changes)';
-            }
-            indicator.title = title;
+            indicator.title = paused ? 'Auto-refresh paused' : 'Auto-refresh active';
         }
-
-        // Update refresh text dynamically
-        if (refreshText) {
-            if (paused) {
-                refreshText.textContent = 'Paused';
-            } else if (this.refreshRate === this.fastRefreshRate) {
-                refreshText.textContent = 'Fast';
-            } else {
-                refreshText.textContent = 'Auto';
-            }
-        }
-    }
-
-    /**
-     * Trigger fast refresh mode when expecting new instances
-     */
-    expectChanges() {
-        this.refreshRate = this.fastRefreshRate;
-        this.updateIndicator(false);
-        
-        // Auto-reset to normal refresh after 60 seconds
-        setTimeout(() => {
-            if (this.refreshRate === this.fastRefreshRate) {
-                this.refreshRate = this.normalRefreshRate;
-                this.updateIndicator(false);
-            }
-        }, 60000);
-    }
-
-    /**
-     * Get current refresh rate in human readable format
-     * @returns {string} Refresh rate description
-     */
-    getRefreshRateDescription() {
-        const rate = this.refreshRate / 1000;
-        return `${rate}s refresh rate`;
     }
 }
 
@@ -1717,16 +1465,8 @@ class CommandManager {
     async sendGlobal(command) {
         this.app.toastManager.info(`Sending ${command} to all instances...`);
 
-        // Commands like 'start' or 'restart' may trigger new instance detection
-        if (['start', 'restart', 'resume'].includes(command.toLowerCase())) {
-            this.app.refreshManager.expectChanges();
-        }
-
-        // Format command for ALL operations (e.g., "start" -> "STARTALL")
-        const allCommand = `${command.toUpperCase()}ALL`;
-
         try {
-            const result = await this.app.api.post(this.app.api.endpoints.commandAll, { command: allCommand });
+            const result = await this.app.api.post(this.app.api.endpoints.commandAll, { command });
 
             const successCount = result.successfulCommands || 0;
             const totalCount = result.totalInstances || 0;
@@ -1757,10 +1497,7 @@ class CommandManager {
         this.app.toastManager.info(`Sending ${command} to instance on port ${port}...`);
 
         try {
-            // Bevorzuge IP:Port wenn vorhanden (Remote über Tailscale)
-            const ip = this.app.state.get('currentActionIp') || '127.0.0.1';
-            const instanceKey = ip && ip !== '127.0.0.1' ? `${ip}:${port}` : `${port}`;
-            const url = `${this.app.api.baseUrl}/instances/${instanceKey}/command`;
+            const url = `${this.app.api.baseUrl}/instances/${port}/command`;
             const result = await this.app.api.post(url, { command });
 
             if (result.success !== false && !result.error) {
@@ -1771,9 +1508,8 @@ class CommandManager {
 
             setTimeout(() => this.app.refresh(), 1000);
         } catch (error) {
-            const ip = this.app.state.get('currentActionIp') || '127.0.0.1';
-            console.error(`Error sending command to ${ip}:${port}:`, error);
-            this.app.toastManager.error(`Failed to send command to ${ip}:${port}`);
+            console.error(`Error sending command to port ${port}:`, error);
+            this.app.toastManager.error(`Failed to send command to port ${port}`);
         }
     }
 }
@@ -1811,39 +1547,17 @@ class UpdateManager {
 
         try {
             // Show confirmation first
-            const instances = this.app.state.get('instances');
-            // Helper function for case-insensitive property access
-            const getProperty = (obj, prop) => {
-                return obj[prop] || obj[prop.charAt(0).toUpperCase() + prop.slice(1)] || undefined;
-            };
-
-            const instance = instances.find(i => {
-                const instancePort = getProperty(i, 'port');
-                return instancePort === port || instancePort === parseInt(port);
-            });
+            const instance = this.app.state.get('instances').find(i => i.port === port);
             if (!instance) {
                 this.app.toastManager.error(`Instance on port ${port} not found`);
                 return;
             }
 
-            const botType = getProperty(instance, 'botType') || getProperty(instance, 'bottype') || 'PokeBot';
-            const botName = getProperty(instance, 'name') || 'Unknown';
-            const isRemote = getProperty(instance, 'isRemote') || getProperty(instance, 'isremote') || false;
-            const ip = instance.ip || instance.IP || '127.0.0.1';
-            
-            const locationText = isRemote ? ` (Remote: ${ip})` : ' (Local)';
-            const confirmed = confirm(`Update ${botType} instance "${botName}" on port ${port}${locationText}?\n\nThis will restart the instance with the latest version.`);
+            const confirmed = confirm(`Update instance on port ${port} (${instance.name || 'Unknown'})?\n\nThis will restart the instance with the latest version.`);
             if (!confirmed) return;
 
-            // Bestimme Update-Endpoint basierend auf Bot-Typ
-            // Hinweis: Für Kompatibilität mit SVRaidBot gibt es keinen per-Instance-Update-Endpunkt.
-            // Verwende die typbasierten Endpunkte für beide Bottypen.
-            const updateEndpoint = botType.toLowerCase() === 'raidbot'
-                ? `/api/bot/update/raidbot`
-                : `/api/bot/update/pokebot`;
-
-            // Start instance update
-            const response = await this.app.api.post(updateEndpoint);
+            // Start single instance update
+            const response = await this.app.api.post(`/api/bot/instances/${port}/update`);
 
             if (response.success) {
                 this.app.toastManager.success(`Started update for instance on port ${port}`);
@@ -1878,8 +1592,7 @@ class UpdateManager {
     async showUpdateModal() {
         try {
             const instancesData = await this.app.api.get(this.app.api.endpoints.instances);
-            const instances = instancesData.instances || instancesData.Instances || [];
-            const currentVersion = instances[0]?.version || 'Unknown';
+            const currentVersion = instancesData.instances?.[0]?.version || 'Unknown';
 
             document.getElementById('current-version').textContent = currentVersion;
             document.getElementById('new-version').textContent = 'Checking...';
@@ -1918,9 +1631,6 @@ class UpdateManager {
         this.app.state.set('updateState', updateState);
 
         try {
-            // Trigger fast refresh mode to quickly detect new instances after update
-            this.app.refreshManager.expectChanges();
-            
             const response = await this.app.api.post(this.app.api.endpoints.updateAll, { force: true });
 
             if (!response.ok && !response.sessionId) {
@@ -1979,15 +1689,14 @@ class UpdateManager {
             if (!response.active || !response.session) {
                 // Get current version to check if update succeeded
                 const instancesResponse = await this.app.api.get(this.app.api.endpoints.instances);
-                const instances = instancesResponse.instances || instancesResponse.Instances || [];
-                const currentVersion = instances[0]?.version || 'Unknown';
+                const currentVersion = instancesResponse.instances?.[0]?.version || 'Unknown';
                 
                 // If version changed or session disappeared, assume success
                 console.log('Update session ended - checking completion');
                 this.handleCompletion({
                     isComplete: true,
                     success: true,
-                    successCount: instances.length || 0,
+                    successCount: instancesResponse.instances?.length || 0,
                     failureCount: 0,
                     message: 'Update completed successfully'
                 });
@@ -2308,8 +2017,7 @@ class RestartManager {
      */
     async restartAll() {
         const response = await this.app.api.get(this.app.api.endpoints.instances);
-        const instances = response.instances || response.Instances || [];
-        const masterExists = instances.some(i => i.isMaster);
+        const masterExists = response.instances.some(i => i.isMaster);
 
         if (!masterExists) {
             this.app.toastManager.error('No master instance found. Cannot initiate restart.');
@@ -2318,9 +2026,6 @@ class RestartManager {
 
         this.showModal('progress');
         document.getElementById('progress-modal-title').textContent = 'Restart in Progress';
-
-        // Trigger fast refresh mode to quickly detect instances coming back online
-        this.app.refreshManager.expectChanges();
 
         try {
             const result = await this.app.api.post(this.app.api.endpoints.restartAll);

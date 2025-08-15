@@ -2,6 +2,7 @@ using PKHeX.Core;
 using SysBot.Base;
 using SysBot.Pokemon.Helpers;
 using System;
+using System.Collections.Generic;
 
 namespace SysBot.Pokemon.Twitch
 {
@@ -58,10 +59,55 @@ namespace SysBot.Pokemon.Twitch
                     var valid = new LegalityAnalysis(pkm).Valid;
                     if (valid)
                     {
-                        var tq = new TwitchQueue<T>(pk, new PokeTradeTrainerInfo(display, mUserId), username, sub);
-                        TwitchBot<T>.QueuePool.RemoveAll(z => z.UserName == username); // remove old requests if any
-                        TwitchBot<T>.QueuePool.Add(tq);
-                        msg = $"@{username} - added to the waiting list. Please whisper your trade code to me! Your request from the waiting list will be removed if you are too slow!";
+                        // Generate trade code directly here like Discord does
+                        var code = TwitchBot<T>.Info.GetRandomTradeCode(mUserId);
+                        List<Pictocodes>? lgCode = null;
+                        
+                        // Check if this is LGPE (PB7) - generate pictocodes automatically
+                        if (typeof(T) == typeof(PB7))
+                        {
+                            lgCode = TwitchBot<T>.Info.GetRandomLGTradeCode();
+                        }
+                        
+                        // Add to trade queue immediately
+                        var trainer = new PokeTradeTrainerInfo(display, mUserId);
+                        var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, username, TwitchBot<T>.GetClient(), TwitchBot<T>.GetChannel(), TwitchBot<T>.Hub.Config.Twitch);
+                        var tt = PokeTradeType.Specific;
+                        var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sub, lgCode);
+                        var uniqueTradeID = TwitchBot<T>.GenerateUniqueTradeID();
+                        var trade = new TradeEntry<T>(detail, mUserId, PokeRoutineType.LinkTrade, display, uniqueTradeID);
+
+                        var added = TwitchBot<T>.Info.AddToTradeQueue(trade, mUserId, sub);
+
+                        if (added == QueueResultAdd.AlreadyInQueue)
+                        {
+                            msg = $"@{username}: Sorry, you are already in the queue.";
+                            return false;
+                        }
+
+                        var position = TwitchBot<T>.Info.CheckPosition(mUserId, uniqueTradeID, PokeRoutineType.LinkTrade);
+                        msg = $"@{username}: Added to the LinkTrade queue, unique ID: {detail.ID}. Current Position: {position.Position}";
+
+                        var botct = TwitchBot<T>.Info.Hub.Bots.Count;
+                        if (position.Position > botct)
+                        {
+                            var eta = TwitchBot<T>.Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
+                            msg += $". Estimated: {eta:F1} minutes.";
+                        }
+                        
+                        // Send trade code immediately via whisper
+                        if (lgCode != null)
+                        {
+                            var codeString = string.Join(", ", lgCode);
+                            TwitchBot<T>.GetClient().SendWhisper(username, $"Your LGPE trade code: {codeString}");
+                            msg += " Your LGPE pictocodes have been sent via whisper.";
+                        }
+                        else
+                        {
+                            TwitchBot<T>.GetClient().SendWhisper(username, $"Your trade code: {code:0000 0000}");
+                            msg += " Your trade code has been sent via whisper.";
+                        }
+                        
                         return true;
                     }
                 }

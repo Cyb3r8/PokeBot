@@ -16,7 +16,7 @@ namespace SysBot.Pokemon.Twitch
     {
         internal static readonly List<TwitchQueue<T>> QueuePool = new();
 
-        private static PokeTradeHub<T> Hub = default!;
+        internal static PokeTradeHub<T> Hub = default!;
 
         private readonly string Channel;
 
@@ -28,6 +28,7 @@ namespace SysBot.Pokemon.Twitch
         {
             Hub = hub;
             Settings = settings;
+            Instance = this;
 
             var credentials = new ConnectionCredentials(settings.Username.ToLower(), settings.Token);
 
@@ -84,6 +85,22 @@ namespace SysBot.Pokemon.Twitch
         }
 
         internal static TradeQueueInfo<T> Info => Hub.Queues.Info;
+        
+        private static TwitchBot<T>? Instance;
+        
+        internal static TwitchClient GetClient()
+        {
+            if (Instance == null)
+                throw new InvalidOperationException("TwitchBot instance not initialized");
+            return Instance.client;
+        }
+        
+        internal static string GetChannel()
+        {
+            if (Instance == null)
+                throw new InvalidOperationException("TwitchBot instance not initialized");
+            return Instance.Channel;
+        }
 
         public void StartingDistribution(string message)
         {
@@ -104,56 +121,13 @@ namespace SysBot.Pokemon.Twitch
             });
         }
 
-        private static int GenerateUniqueTradeID()
+        internal static int GenerateUniqueTradeID()
         {
             long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             int randomValue = new Random().Next(1000);
             return ((int)(timestamp % int.MaxValue) * 1000) + randomValue;
         }
 
-        private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg, List<Pictocodes>? lgcode = null)
-        {
-            // var user = e.WhisperMessage.UserId;
-            var userID = ulong.Parse(e.WhisperMessage.UserId);
-            var name = e.WhisperMessage.DisplayName;
-
-            var trainer = new PokeTradeTrainerInfo(name, ulong.Parse(e.WhisperMessage.UserId));
-            var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, e.WhisperMessage.Username, client, Channel, Hub.Config.Twitch);
-            var tt = type == PokeRoutineType.SeedCheck ? PokeTradeType.Seed : PokeTradeType.Specific;
-            var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored, lgcode);
-            var uniqueTradeID = GenerateUniqueTradeID();
-            var trade = new TradeEntry<T>(detail, userID, type, name, uniqueTradeID);
-
-            var added = Info.AddToTradeQueue(trade, userID, sig == RequestSignificance.Owner);
-
-            if (added == QueueResultAdd.AlreadyInQueue)
-            {
-                msg = $"@{name}: Sorry, you are already in the queue.";
-                return false;
-            }
-
-            var position = Info.CheckPosition(userID, uniqueTradeID, type);
-            msg = $"@{name}: Added to the {type} queue, unique ID: {detail.ID}. Current Position: {position.Position}";
-
-            var botct = Info.Hub.Bots.Count;
-            if (position.Position > botct)
-            {
-                var eta = Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
-                msg += $". Estimated: {eta:F1} minutes.";
-            }
-            
-            // Add info about trade code delivery based on game type
-            if (typeof(T) == typeof(PB7))
-            {
-                msg += " Your LGPE pictocodes will be sent via whisper.";
-            }
-            else
-            {
-                msg += " Your trade code will be sent via whisper.";
-            }
-            
-            return true;
-        }
 
         private void Client_OnChatCommandReceived(object? sender, OnChatCommandReceivedArgs e)
         {
@@ -228,55 +202,16 @@ namespace SysBot.Pokemon.Twitch
         private void Client_OnWhisperReceived(object? sender, OnWhisperReceivedArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - @{e.WhisperMessage.Username}: {e.WhisperMessage.Message}");
+            // Clean up old waiting list entries periodically
             if (QueuePool.Count > 100)
             {
                 var removed = QueuePool[0];
                 QueuePool.RemoveAt(0); // First in, first out
                 client.SendMessage(Channel, $"Removed @{removed.DisplayName} ({(Species)removed.Pokemon.Species}) from the waiting list: stale request.");
             }
-
-            var user = QueuePool.FindLast(q => q.UserName == e.WhisperMessage.Username);
-            if (user == null)
-                return;
-            QueuePool.Remove(user);
             
-            try
-            {
-                var sig = GetUserSignificance(user);
-                var userID = ulong.Parse(e.WhisperMessage.UserId);
-                
-                // Generate codes automatically like Discord does
-                var code = Info.GetRandomTradeCode(userID);
-                List<Pictocodes>? lgCode = null;
-                
-                // Check if this is LGPE (PB7) - generate pictocodes automatically
-                if (typeof(T) == typeof(PB7))
-                {
-                    lgCode = Info.GetRandomLGTradeCode();
-                }
-                
-                var success = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message, lgCode);
-                
-                if (success)
-                {
-                    // Send the trade code via whisper
-                    if (lgCode != null)
-                    {
-                        var codeString = string.Join(", ", lgCode);
-                        client.SendWhisper(e.WhisperMessage.Username, $"Your LGPE trade code: {codeString}");
-                    }
-                    else
-                    {
-                        client.SendWhisper(e.WhisperMessage.Username, $"Your trade code: {code:0000 0000}");
-                    }
-                }
-                client.SendMessage(Channel, message);
-            }
-            catch (Exception ex)
-            {
-                LogUtil.LogSafe(ex, nameof(TwitchBot<T>));
-                LogUtil.LogError($"{ex.Message}", nameof(TwitchBot<T>));
-            }
+            // The old whisper-based trade code system is no longer needed
+            // Trade codes are now generated immediately when using %trade command
         }
 
         private List<Pictocodes> GenerateRandomLGPECode()

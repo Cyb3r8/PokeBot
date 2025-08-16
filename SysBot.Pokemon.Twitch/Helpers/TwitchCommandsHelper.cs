@@ -95,6 +95,8 @@ namespace SysBot.Pokemon.Twitch
                             msg += $". Estimated: {eta:F1} minutes.";
                         }
                         
+                        LogUtil.LogText($"[TwitchBot] DEBUG: About to send whisper to {username} with code {code:0000 0000}");
+                        
                         // Automatically send trade code via whisper
                         try
                         {

@@ -356,3 +356,6 @@ MigrationBackup/
 
 # Claude AI folder
 /.claude/*
+
+# Twitch
+/Twitch_old/*

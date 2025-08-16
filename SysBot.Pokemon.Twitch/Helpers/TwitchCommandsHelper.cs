@@ -95,8 +95,21 @@ namespace SysBot.Pokemon.Twitch
                             msg += $". Estimated: {eta:F1} minutes.";
                         }
                         
-                        // Send trade code via whisper command instruction
-                        msg += " Whisper me with \"!code\" to get your trade code.";
+                        // Automatically send trade code via whisper
+                        var client = TwitchBot<T>.GetClient();
+                        
+                        // Check if this is LGPE (PB7) and send appropriate code
+                        if (typeof(T) == typeof(PB7) && lgCode != null && lgCode.Count > 0)
+                        {
+                            var codeString = string.Join(", ", lgCode);
+                            client.SendWhisper(username, $"Your LGPE trade code: {codeString}");
+                        }
+                        else
+                        {
+                            client.SendWhisper(username, $"Your trade code is {code:0000 0000}");
+                        }
+                        
+                        msg += " Check your whispers for your trade code!";
                         
                         return true;
                     }

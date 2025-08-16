@@ -85,42 +85,19 @@ namespace SysBot.Pokemon.Twitch
                             return false;
                         }
 
-                        var position = TwitchBot<T>.Info.CheckPosition(mUserId, uniqueTradeID, PokeRoutineType.LinkTrade);
-                        msg = $"@{username}: Added to the LinkTrade queue, unique ID: {detail.ID}. Current Position: {(position.Position == -1 ? 1 : position.Position)}";
-
-                        var botct = TwitchBot<T>.Info.Hub.Bots.Count;
-                        if (position.Position > botct)
-                        {
-                            var eta = TwitchBot<T>.Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
-                            msg += $". Estimated: {eta:F1} minutes.";
-                        }
+                        // Use old system: Add to waiting list and ask user to whisper code
+                        var tq = new TwitchQueue<T>(pk, new PokeTradeTrainerInfo(display, mUserId), username, sub);
+                        TwitchBot<T>.QueuePool.RemoveAll(z => z.UserName == username); // remove old requests if any
+                        TwitchBot<T>.QueuePool.Add(tq);
                         
-                        LogUtil.LogText($"[TwitchBot] DEBUG: About to send whisper to {username} with code {code:0000 0000}");
-                        
-                        // Automatically send trade code via whisper
-                        try
+                        if (typeof(T) == typeof(PB7))
                         {
-                            var client = TwitchBot<T>.GetClient();
-                            
-                            // Check if this is LGPE (PB7) and send appropriate code
-                            if (typeof(T) == typeof(PB7) && lgCode != null && lgCode.Count > 0)
-                            {
-                                var codeString = string.Join(", ", lgCode);
-                                client.SendWhisper(username, $"Your LGPE trade code: {codeString}");
-                                LogUtil.LogText($"[TwitchBot] Sent LGPE whisper to {username}: {codeString}");
-                            }
-                            else
-                            {
-                                client.SendWhisper(username, $"Your trade code is {code:0000 0000}");
-                                LogUtil.LogText($"[TwitchBot] Sent whisper to {username}: {code:0000 0000}");
-                            }
+                            msg = $"@{username} - added to the waiting list. Please whisper your LGPE trade code to me (3 Pokémon names like: Pikachu Squirtle Charmander)! Your request will be removed if you are too slow!";
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            LogUtil.LogError($"Failed to send whisper to {username}: {ex.Message}", "TwitchBot");
+                            msg = $"@{username} - added to the waiting list. Please whisper your trade code to me (8 digits like: 12345678)! Your request will be removed if you are too slow!";
                         }
-                        
-                        msg += " Check your whispers for your trade code!";
                         
                         return true;
                     }

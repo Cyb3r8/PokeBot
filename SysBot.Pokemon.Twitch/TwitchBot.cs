@@ -203,21 +203,51 @@ namespace SysBot.Pokemon.Twitch
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - @{e.WhisperMessage.Username}: {e.WhisperMessage.Message}");
             
-            // Handle !code command in whispers
-            if (e.WhisperMessage.Message.ToLower() == "!code")
-            {
-                var userID = ulong.Parse(e.WhisperMessage.UserId);
-                var response = TwitchCommandsHelper<T>.GetCode(userID);
-                client.SendWhisper(e.WhisperMessage.Username, response);
-                return;
-            }
-            
             // Clean up old waiting list entries periodically
             if (QueuePool.Count > 100)
             {
                 var removed = QueuePool[0];
                 QueuePool.RemoveAt(0); // First in, first out
                 client.SendMessage(Channel, $"Removed @{removed.DisplayName} ({(Species)removed.Pokemon.Species}) from the waiting list: stale request.");
+            }
+
+            var user = QueuePool.FindLast(q => q.UserName == e.WhisperMessage.Username);
+            if (user == null)
+                return;
+            
+            QueuePool.Remove(user);
+            var msg = e.WhisperMessage.Message;
+            try
+            {
+                var sig = GetUserSignificance(user);
+                
+                // Check if this is LGPE and handle Pictocodes
+                if (typeof(T) == typeof(PB7))
+                {
+                    var lgCode = ParseLGPECode(msg);
+                    if (lgCode != null && lgCode.Count == 3)
+                    {
+                        var _ = AddToTradeQueue(user.Pokemon, 0, e, sig, PokeRoutineType.LinkTrade, out string message, lgCode);
+                        client.SendMessage(Channel, message);
+                    }
+                    else
+                    {
+                        client.SendMessage(Channel, $"@{e.WhisperMessage.Username}: Invalid LGPE code format. Please send 3 Pokémon names like: Pikachu Squirtle Charmander");
+                    }
+                }
+                else
+                {
+                    // Handle numeric codes for other games
+                    int code = Util.ToInt32(msg);
+                    var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message);
+                    client.SendMessage(Channel, message);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogSafe(ex, nameof(TwitchBot<T>));
+                LogUtil.LogError($"{ex.Message}", nameof(TwitchBot<T>));
+                client.SendMessage(Channel, $"@{e.WhisperMessage.Username}: Invalid code format. Please try again.");
             }
         }
 
@@ -232,6 +262,57 @@ namespace SysBot.Pokemon.Twitch
             }
             
             return code;
+        }
+
+        private List<Pictocodes>? ParseLGPECode(string message)
+        {
+            var parts = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 3)
+                return null;
+
+            var codes = new List<Pictocodes>();
+            foreach (var part in parts)
+            {
+                if (Enum.TryParse<Pictocodes>(part, true, out var pictocode))
+                {
+                    codes.Add(pictocode);
+                }
+                else
+                {
+                    return null; // Invalid Pokémon name
+                }
+            }
+            return codes;
+        }
+
+        private bool AddToTradeQueue(T pkm, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg, List<Pictocodes>? lgCode = null)
+        {
+            var userID = ulong.Parse(e.WhisperMessage.UserId);
+            var trainer = new PokeTradeTrainerInfo(e.WhisperMessage.DisplayName, userID);
+            var notifier = new TwitchTradeNotifier<T>(pkm, trainer, code, e.WhisperMessage.Username, client, Channel, Settings);
+            var tt = PokeTradeType.Specific;
+            var detail = new PokeTradeDetail<T>(pkm, trainer, notifier, tt, code, sig == RequestSignificance.Favored, lgCode);
+            var uniqueTradeID = GenerateUniqueTradeID();
+            var trade = new TradeEntry<T>(detail, userID, type, e.WhisperMessage.DisplayName, uniqueTradeID);
+
+            var added = Info.AddToTradeQueue(trade, userID, sig == RequestSignificance.Favored);
+            if (added == QueueResultAdd.AlreadyInQueue)
+            {
+                msg = $"@{e.WhisperMessage.Username}: Sorry, you are already in the queue.";
+                return false;
+            }
+
+            var position = Info.CheckPosition(userID, uniqueTradeID, type);
+            msg = $"@{e.WhisperMessage.Username}: Added to the LinkTrade queue, unique ID: {detail.ID}. Current Position: {(position.Position == -1 ? 1 : position.Position)}";
+
+            var botct = Info.Hub.Bots.Count;
+            if (position.Position > botct)
+            {
+                var eta = Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
+                msg += $". Estimated: {eta:F1} minutes.";
+            }
+
+            return true;
         }
 
         private RequestSignificance GetUserSignificance(TwitchQueue<T> user)
@@ -288,8 +369,6 @@ namespace SysBot.Pokemon.Twitch
                 case "remove":
                     return $"@{m.Username}: {TwitchCommandsHelper<T>.ClearTrade(ulong.Parse(m.UserId))}";
 
-                case "code" when whisper:
-                    return TwitchCommandsHelper<T>.GetCode(ulong.Parse(m.UserId));
 
                 // Sudo Only Commands
                 case "tca" when !sudo():

@@ -96,17 +96,26 @@ namespace SysBot.Pokemon.Twitch
                         }
                         
                         // Automatically send trade code via whisper
-                        var client = TwitchBot<T>.GetClient();
-                        
-                        // Check if this is LGPE (PB7) and send appropriate code
-                        if (typeof(T) == typeof(PB7) && lgCode != null && lgCode.Count > 0)
+                        try
                         {
-                            var codeString = string.Join(", ", lgCode);
-                            client.SendWhisper(username, $"Your LGPE trade code: {codeString}");
+                            var client = TwitchBot<T>.GetClient();
+                            
+                            // Check if this is LGPE (PB7) and send appropriate code
+                            if (typeof(T) == typeof(PB7) && lgCode != null && lgCode.Count > 0)
+                            {
+                                var codeString = string.Join(", ", lgCode);
+                                client.SendWhisper(username, $"Your LGPE trade code: {codeString}");
+                                LogUtil.LogText($"[TwitchBot] Sent LGPE whisper to {username}: {codeString}");
+                            }
+                            else
+                            {
+                                client.SendWhisper(username, $"Your trade code is {code:0000 0000}");
+                                LogUtil.LogText($"[TwitchBot] Sent whisper to {username}: {code:0000 0000}");
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            client.SendWhisper(username, $"Your trade code is {code:0000 0000}");
+                            LogUtil.LogError($"Failed to send whisper to {username}: {ex.Message}", "TwitchBot");
                         }
                         
                         msg += " Check your whispers for your trade code!";

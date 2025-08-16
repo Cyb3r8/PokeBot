@@ -202,6 +202,16 @@ namespace SysBot.Pokemon.Twitch
         private void Client_OnWhisperReceived(object? sender, OnWhisperReceivedArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - @{e.WhisperMessage.Username}: {e.WhisperMessage.Message}");
+            
+            // Handle !code command in whispers
+            if (e.WhisperMessage.Message.ToLower() == "!code")
+            {
+                var userID = ulong.Parse(e.WhisperMessage.UserId);
+                var response = TwitchCommandsHelper<T>.GetCode(userID);
+                client.SendWhisper(e.WhisperMessage.Username, response);
+                return;
+            }
+            
             // Clean up old waiting list entries periodically
             if (QueuePool.Count > 100)
             {
@@ -209,9 +219,6 @@ namespace SysBot.Pokemon.Twitch
                 QueuePool.RemoveAt(0); // First in, first out
                 client.SendMessage(Channel, $"Removed @{removed.DisplayName} ({(Species)removed.Pokemon.Species}) from the waiting list: stale request.");
             }
-            
-            // The old whisper-based trade code system is no longer needed
-            // Trade codes are now generated immediately when using %trade command
         }
 
         private List<Pictocodes> GenerateRandomLGPECode()

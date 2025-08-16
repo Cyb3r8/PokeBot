@@ -16,7 +16,7 @@ namespace SysBot.Pokemon.Twitch
     {
         internal static readonly List<TwitchQueue<T>> QueuePool = new();
 
-        internal static PokeTradeHub<T> Hub = default!;
+        private static PokeTradeHub<T> Hub = default!;
 
         private readonly string Channel;
 
@@ -28,7 +28,6 @@ namespace SysBot.Pokemon.Twitch
         {
             Hub = hub;
             Settings = settings;
-            Instance = this;
 
             var credentials = new ConnectionCredentials(settings.Username.ToLower(), settings.Token);
 
@@ -85,22 +84,6 @@ namespace SysBot.Pokemon.Twitch
         }
 
         internal static TradeQueueInfo<T> Info => Hub.Queues.Info;
-        
-        private static TwitchBot<T>? Instance;
-        
-        internal static TwitchClient GetClient()
-        {
-            if (Instance == null)
-                throw new InvalidOperationException("TwitchBot instance not initialized");
-            return Instance.client;
-        }
-        
-        internal static string GetChannel()
-        {
-            if (Instance == null)
-                throw new InvalidOperationException("TwitchBot instance not initialized");
-            return Instance.Channel;
-        }
 
         public void StartingDistribution(string message)
         {
@@ -121,13 +104,45 @@ namespace SysBot.Pokemon.Twitch
             });
         }
 
-        internal static int GenerateUniqueTradeID()
+        private static int GenerateUniqueTradeID()
         {
             long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             int randomValue = new Random().Next(1000);
             return ((int)(timestamp % int.MaxValue) * 1000) + randomValue;
         }
 
+        private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg)
+        {
+            // var user = e.WhisperMessage.UserId;
+            var userID = ulong.Parse(e.WhisperMessage.UserId);
+            var name = e.WhisperMessage.DisplayName;
+
+            var trainer = new PokeTradeTrainerInfo(name, ulong.Parse(e.WhisperMessage.UserId));
+            var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, e.WhisperMessage.Username, client, Channel, Hub.Config.Twitch);
+            var tt = type == PokeRoutineType.SeedCheck ? PokeTradeType.Seed : PokeTradeType.Specific;
+            var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored);
+            var uniqueTradeID = GenerateUniqueTradeID();
+            var trade = new TradeEntry<T>(detail, userID, type, name, uniqueTradeID);
+
+            var added = Info.AddToTradeQueue(trade, userID, sig == RequestSignificance.Owner);
+
+            if (added == QueueResultAdd.AlreadyInQueue)
+            {
+                msg = $"@{name}: Sorry, you are already in the queue.";
+                return false;
+            }
+
+            var position = Info.CheckPosition(userID, uniqueTradeID, type);
+            msg = $"@{name}: Added to the {type} queue, unique ID: {detail.ID}. Current Position: {position.Position}";
+
+            var botct = Info.Hub.Bots.Count;
+            if (position.Position > botct)
+            {
+                var eta = Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
+                msg += $". Estimated: {eta:F1} minutes.";
+            }
+            return true;
+        }
 
         private void Client_OnChatCommandReceived(object? sender, OnChatCommandReceivedArgs e)
         {
@@ -202,8 +217,6 @@ namespace SysBot.Pokemon.Twitch
         private void Client_OnWhisperReceived(object? sender, OnWhisperReceivedArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - @{e.WhisperMessage.Username}: {e.WhisperMessage.Message}");
-            
-            // Clean up old waiting list entries periodically
             if (QueuePool.Count > 100)
             {
                 var removed = QueuePool[0];
@@ -214,105 +227,20 @@ namespace SysBot.Pokemon.Twitch
             var user = QueuePool.FindLast(q => q.UserName == e.WhisperMessage.Username);
             if (user == null)
                 return;
-            
             QueuePool.Remove(user);
             var msg = e.WhisperMessage.Message;
             try
             {
+                int code = Util.ToInt32(msg);
                 var sig = GetUserSignificance(user);
-                
-                // Check if this is LGPE and handle Pictocodes
-                if (typeof(T) == typeof(PB7))
-                {
-                    var lgCode = ParseLGPECode(msg);
-                    if (lgCode != null && lgCode.Count == 3)
-                    {
-                        var _ = AddToTradeQueue(user.Pokemon, 0, e, sig, PokeRoutineType.LinkTrade, out string message, lgCode);
-                        client.SendMessage(Channel, message);
-                    }
-                    else
-                    {
-                        client.SendMessage(Channel, $"@{e.WhisperMessage.Username}: Invalid LGPE code format. Please send 3 Pokémon names like: Pikachu Squirtle Charmander");
-                    }
-                }
-                else
-                {
-                    // Handle numeric codes for other games
-                    int code = Util.ToInt32(msg);
-                    var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message);
-                    client.SendMessage(Channel, message);
-                }
+                var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message);
+                client.SendMessage(Channel, message);
             }
             catch (Exception ex)
             {
                 LogUtil.LogSafe(ex, nameof(TwitchBot<T>));
                 LogUtil.LogError($"{ex.Message}", nameof(TwitchBot<T>));
-                client.SendMessage(Channel, $"@{e.WhisperMessage.Username}: Invalid code format. Please try again.");
             }
-        }
-
-        private List<Pictocodes> GenerateRandomLGPECode()
-        {
-            var code = new List<Pictocodes>();
-            var random = new Random();
-            
-            for (int i = 0; i < 3; i++)
-            {
-                code.Add((Pictocodes)random.Next(10)); // 0-9 for all available pictocodes
-            }
-            
-            return code;
-        }
-
-        private List<Pictocodes>? ParseLGPECode(string message)
-        {
-            var parts = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length != 3)
-                return null;
-
-            var codes = new List<Pictocodes>();
-            foreach (var part in parts)
-            {
-                if (Enum.TryParse<Pictocodes>(part, true, out var pictocode))
-                {
-                    codes.Add(pictocode);
-                }
-                else
-                {
-                    return null; // Invalid Pokémon name
-                }
-            }
-            return codes;
-        }
-
-        private bool AddToTradeQueue(T pkm, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg, List<Pictocodes>? lgCode = null)
-        {
-            var userID = ulong.Parse(e.WhisperMessage.UserId);
-            var trainer = new PokeTradeTrainerInfo(e.WhisperMessage.DisplayName, userID);
-            var notifier = new TwitchTradeNotifier<T>(pkm, trainer, code, e.WhisperMessage.Username, client, Channel, Settings);
-            var tt = PokeTradeType.Specific;
-            var detail = new PokeTradeDetail<T>(pkm, trainer, notifier, tt, code, sig == RequestSignificance.Favored, lgCode);
-            var uniqueTradeID = GenerateUniqueTradeID();
-            var trade = new TradeEntry<T>(detail, userID, type, e.WhisperMessage.DisplayName, uniqueTradeID);
-
-            var added = Info.AddToTradeQueue(trade, userID, sig == RequestSignificance.Favored);
-            if (added == QueueResultAdd.AlreadyInQueue)
-            {
-                msg = $"@{e.WhisperMessage.Username}: Sorry, you are already in the queue.";
-                return false;
-            }
-
-            var position = Info.CheckPosition(userID, uniqueTradeID, type);
-            msg = $"@{e.WhisperMessage.Username}: Added to the LinkTrade queue, unique ID: {detail.ID}. Current Position: {(position.Position == -1 ? 1 : position.Position)}";
-
-            var botct = Info.Hub.Bots.Count;
-            if (position.Position > botct)
-            {
-                var eta = Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
-                msg += $". Estimated: {eta:F1} minutes.";
-            }
-
-            return true;
         }
 
         private RequestSignificance GetUserSignificance(TwitchQueue<T> user)
@@ -369,6 +297,8 @@ namespace SysBot.Pokemon.Twitch
                 case "remove":
                     return $"@{m.Username}: {TwitchCommandsHelper<T>.ClearTrade(ulong.Parse(m.UserId))}";
 
+                case "code" when whisper:
+                    return TwitchCommandsHelper<T>.GetCode(ulong.Parse(m.UserId));
 
                 // Sudo Only Commands
                 case "tca" when !sudo():

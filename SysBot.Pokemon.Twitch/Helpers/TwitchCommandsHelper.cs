@@ -2,7 +2,6 @@ using PKHeX.Core;
 using SysBot.Base;
 using SysBot.Pokemon.Helpers;
 using System;
-using System.Collections.Generic;
 
 namespace SysBot.Pokemon.Twitch
 {
@@ -59,46 +58,10 @@ namespace SysBot.Pokemon.Twitch
                     var valid = new LegalityAnalysis(pkm).Valid;
                     if (valid)
                     {
-                        // Generate trade code directly here like Discord does
-                        var code = TwitchBot<T>.Info.GetRandomTradeCode(mUserId);
-                        List<Pictocodes>? lgCode = null;
-                        
-                        // Check if this is LGPE (PB7) - generate pictocodes automatically
-                        if (typeof(T) == typeof(PB7))
-                        {
-                            lgCode = TwitchBot<T>.Info.GetRandomLGTradeCode();
-                        }
-                        
-                        // Add to trade queue immediately
-                        var trainer = new PokeTradeTrainerInfo(display, mUserId);
-                        var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, username, TwitchBot<T>.GetClient(), TwitchBot<T>.GetChannel(), TwitchBot<T>.Hub.Config.Twitch);
-                        var tt = PokeTradeType.Specific;
-                        var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sub, lgCode);
-                        var uniqueTradeID = TwitchBot<T>.GenerateUniqueTradeID();
-                        var trade = new TradeEntry<T>(detail, mUserId, PokeRoutineType.LinkTrade, display, uniqueTradeID);
-
-                        var added = TwitchBot<T>.Info.AddToTradeQueue(trade, mUserId, sub);
-
-                        if (added == QueueResultAdd.AlreadyInQueue)
-                        {
-                            msg = $"@{username}: Sorry, you are already in the queue.";
-                            return false;
-                        }
-
-                        // Use old system: Add to waiting list and ask user to whisper code
                         var tq = new TwitchQueue<T>(pk, new PokeTradeTrainerInfo(display, mUserId), username, sub);
                         TwitchBot<T>.QueuePool.RemoveAll(z => z.UserName == username); // remove old requests if any
                         TwitchBot<T>.QueuePool.Add(tq);
-                        
-                        if (typeof(T) == typeof(PB7))
-                        {
-                            msg = $"@{username} - added to the waiting list. Please whisper your LGPE trade code to me (3 Pokémon names like: Pikachu Squirtle Charmander)! Your request will be removed if you are too slow!";
-                        }
-                        else
-                        {
-                            msg = $"@{username} - added to the waiting list. Please whisper your trade code to me (8 digits like: 12345678)! Your request will be removed if you are too slow!";
-                        }
-                        
+                        msg = $"@{username} - added to the waiting list. Please whisper your trade code to me! Your request from the waiting list will be removed if you are too slow!";
                         return true;
                     }
                 }

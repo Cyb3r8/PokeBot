@@ -111,7 +111,32 @@ namespace SysBot.Pokemon.Twitch
             return ((int)(timestamp % int.MaxValue) * 1000) + randomValue;
         }
 
-        private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg)
+        private static List<Pictocodes>? ParsePokemonNamesToPictocodes(string input)
+        {
+            var cleanInput = input.Trim();
+            
+            // Split by spaces, commas, or semicolons
+            var pokemonNames = cleanInput.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            var pictocodes = new List<Pictocodes>();
+            
+            foreach (var name in pokemonNames)
+            {
+                var cleanName = name.Trim();
+                if (Enum.TryParse<Pictocodes>(cleanName, true, out var pictocode))
+                {
+                    pictocodes.Add(pictocode);
+                }
+                else
+                {
+                    // Return null if any Pokemon name is invalid
+                    return null;
+                }
+            }
+            
+            return pictocodes.Count > 0 ? pictocodes : null;
+        }
+
+        private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg, List<Pictocodes>? lgcode = null, bool ignoreAutoOT = false)
         {
             // var user = e.WhisperMessage.UserId;
             var userID = ulong.Parse(e.WhisperMessage.UserId);
@@ -120,7 +145,7 @@ namespace SysBot.Pokemon.Twitch
             var trainer = new PokeTradeTrainerInfo(name, ulong.Parse(e.WhisperMessage.UserId));
             var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, e.WhisperMessage.Username, client, Channel, Hub.Config.Twitch);
             var tt = type == PokeRoutineType.SeedCheck ? PokeTradeType.Seed : PokeTradeType.Specific;
-            var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored);
+            var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored, lgcode, 0, 0, false, 0, ignoreAutoOT);
             var uniqueTradeID = GenerateUniqueTradeID();
             var trade = new TradeEntry<T>(detail, userID, type, name, uniqueTradeID);
 
@@ -231,9 +256,35 @@ namespace SysBot.Pokemon.Twitch
             var msg = e.WhisperMessage.Message;
             try
             {
-                int code = Util.ToInt32(msg);
                 var sig = GetUserSignificance(user);
-                var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message);
+                List<Pictocodes>? lgcode = null;
+                int code = 0;
+                
+                // Try to parse as numeric code first
+                if (int.TryParse(msg, out code))
+                {
+                    // Use numeric code
+                }
+                else
+                {
+                    // Try to parse as Pokemon names for LGPE
+                    lgcode = ParsePokemonNamesToPictocodes(msg);
+                    if (lgcode != null)
+                    {
+                        // Generate a random numeric code for LGPE trades
+                        code = Util.Rand.Next(100000000, 999999999);
+                        LogUtil.LogText($"[{client.TwitchUsername}] - Parsed LGPE code from @{e.WhisperMessage.Username}: {string.Join(", ", lgcode)}");
+                    }
+                    else
+                    {
+                        // If neither numeric nor valid Pokemon names, try old behavior
+                        code = Util.ToInt32(msg);
+                    }
+                }
+                
+                // Only subscribers get AutoOT
+                bool ignoreAutoOT = !user.IsSubscriber;
+                var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message, lgcode, ignoreAutoOT);
                 client.SendMessage(Channel, message);
             }
             catch (Exception ex)

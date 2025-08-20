@@ -155,6 +155,12 @@ public class DiscordSettings
     [Category(Roles), Description("Users with this role are allowed to use the MysteryEgg command.")]
     public RemoteControlAccessList RoleCanMysteryEgg { get; set; } = new() { AllowIfEmpty = true };
 
+    [Category(Roles), Description("Users with this role are allowed to use Batch Commands in their Showdown sets.")]
+    public RemoteControlAccessList RoleCanUseBatchCommands { get; set; } = new() { AllowIfEmpty = true };
+
+    [Category(Roles), Description("Users with this role are allowed to override trainer data (OT, TID, SID, Gender) in their Showdown sets.")]
+    public RemoteControlAccessList RoleCanOverrideTrainerData { get; set; } = new() { AllowIfEmpty = true };
+
     [Category(Roles), Description("Users with this role are allowed to join the queue with a better position.")]
     public RemoteControlAccessList RoleFavored { get; set; } = new() { AllowIfEmpty = false };
 

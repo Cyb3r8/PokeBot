@@ -75,9 +75,16 @@ namespace SysBot.Pokemon.Twitch
             client.OnConnectionError += (_, e) =>
                 LogUtil.LogError(e.BotUsername + Environment.NewLine + e.Error.Message, "TwitchBot");
 
-            client.Connect();
+            try
+            {
+                client.Connect();
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to connect to Twitch initially: {ex.Message}", "TwitchBot");
+            }
 
-            EchoUtil.Forwarders.Add(msg => client.SendMessage(Channel, msg));
+            EchoUtil.Forwarders.Add(msg => SafeSendMessage(Channel, msg));
 
             // Turn on if verified
             // Hub.Queues.Forwarders.Add((bot, detail) => client.SendMessage(Channel, $"{bot.Connection.Name} is now trading (ID {detail.ID}) {detail.Trainer.TrainerName}"));
@@ -85,22 +92,59 @@ namespace SysBot.Pokemon.Twitch
 
         internal static TradeQueueInfo<T> Info => Hub.Queues.Info;
 
+        private void SafeSendMessage(string channel, string message)
+        {
+            try
+            {
+                if (client.IsConnected)
+                    client.SendMessage(channel, message);
+                else
+                    LogUtil.LogText($"[{client.TwitchUsername}] - Cannot send message (not connected): {message}");
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to send message to {channel}: {ex.Message}", "TwitchBot");
+            }
+        }
+
+        private void SafeSendWhisper(string user, string message)
+        {
+            try
+            {
+                if (client.IsConnected)
+                    client.SendWhisper(user, message);
+                else
+                    LogUtil.LogText($"[{client.TwitchUsername}] - Cannot send whisper to {user} (not connected): {message}");
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to send whisper to {user}: {ex.Message}", "TwitchBot");
+            }
+        }
+
         public void StartingDistribution(string message)
         {
             Task.Run(async () =>
             {
-                client.SendMessage(Channel, "5...");
-                await Task.Delay(1_000).ConfigureAwait(false);
-                client.SendMessage(Channel, "4...");
-                await Task.Delay(1_000).ConfigureAwait(false);
-                client.SendMessage(Channel, "3...");
-                await Task.Delay(1_000).ConfigureAwait(false);
-                client.SendMessage(Channel, "2...");
-                await Task.Delay(1_000).ConfigureAwait(false);
-                client.SendMessage(Channel, "1...");
-                await Task.Delay(1_000).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(message))
-                    client.SendMessage(Channel, message);
+                try
+                {
+                    SafeSendMessage(Channel, "5...");
+                    await Task.Delay(1_000).ConfigureAwait(false);
+                    SafeSendMessage(Channel, "4...");
+                    await Task.Delay(1_000).ConfigureAwait(false);
+                    SafeSendMessage(Channel, "3...");
+                    await Task.Delay(1_000).ConfigureAwait(false);
+                    SafeSendMessage(Channel, "2...");
+                    await Task.Delay(1_000).ConfigureAwait(false);
+                    SafeSendMessage(Channel, "1...");
+                    await Task.Delay(1_000).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(message))
+                        SafeSendMessage(Channel, message);
+                }
+                catch (Exception ex)
+                {
+                    LogUtil.LogError($"Error during distribution countdown: {ex.Message}", "TwitchBot");
+                }
             });
         }
 
@@ -182,7 +226,7 @@ namespace SysBot.Pokemon.Twitch
                 return;
 
             var channel = e.Command.ChatMessage.Channel;
-            client.SendMessage(channel, response);
+            SafeSendMessage(channel, response);
         }
 
         private void Client_OnConnected(object? sender, OnConnectedArgs e)
@@ -190,26 +234,62 @@ namespace SysBot.Pokemon.Twitch
             LogUtil.LogText($"[{client.TwitchUsername}] - Connected {e.AutoJoinChannel} as {e.BotUsername}");
         }
 
-        private async void Client_OnDisconnected(object? sender, OnDisconnectedEventArgs e)
+        private void Client_OnDisconnected(object? sender, OnDisconnectedEventArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - Disconnected.");
-            while (!client.IsConnected)
+            
+            _ = Task.Run(async () =>
             {
-                client.Reconnect();
-                await Task.Delay(5000).ConfigureAwait(false);
-            }
+                int retryCount = 0;
+                const int maxRetries = 10;
+                
+                while (!client.IsConnected && retryCount < maxRetries)
+                {
+                    try
+                    {
+                        LogUtil.LogText($"[{client.TwitchUsername}] - Attempting to reconnect... ({retryCount + 1}/{maxRetries})");
+                        client.Reconnect();
+                        
+                        await Task.Delay(5000 + (retryCount * 2000)).ConfigureAwait(false);
+                        retryCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogError($"[{client.TwitchUsername}] - Reconnection attempt failed: {ex.Message}", "TwitchBot");
+                        await Task.Delay(10000).ConfigureAwait(false);
+                        retryCount++;
+                    }
+                }
+                
+                if (!client.IsConnected)
+                {
+                    LogUtil.LogError($"[{client.TwitchUsername}] - Failed to reconnect after {maxRetries} attempts. Twitch functionality disabled.", "TwitchBot");
+                }
+                else
+                {
+                    LogUtil.LogText($"[{client.TwitchUsername}] - Successfully reconnected to Twitch!");
+                }
+            });
         }
 
         private void Client_OnJoinedChannel(object? sender, OnJoinedChannelArgs e)
         {
             LogUtil.LogInfo($"Joined {e.Channel}", e.BotUsername);
-            client.SendMessage(e.Channel, "Connected!");
+            SafeSendMessage(e.Channel, "Connected!");
         }
 
         private void Client_OnLeftChannel(object? sender, OnLeftChannelArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - Left channel {e.Channel}");
-            client.JoinChannel(e.Channel);
+            try
+            {
+                if (client.IsConnected)
+                    client.JoinChannel(e.Channel);
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to rejoin channel {e.Channel}: {ex.Message}", "TwitchBot");
+            }
         }
 
         private void Client_OnLog(object? sender, OnLogArgs e)
@@ -220,8 +300,15 @@ namespace SysBot.Pokemon.Twitch
         private void Client_OnMessageReceived(object? sender, OnMessageReceivedArgs e)
         {
             LogUtil.LogText($"[{client.TwitchUsername}] - Received message: @{e.ChatMessage.Username}: {e.ChatMessage.Message}");
-            if (client.JoinedChannels.Count == 0)
-                client.JoinChannel(e.ChatMessage.Channel);
+            try
+            {
+                if (client.JoinedChannels.Count == 0 && client.IsConnected)
+                    client.JoinChannel(e.ChatMessage.Channel);
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Failed to join channel {e.ChatMessage.Channel}: {ex.Message}", "TwitchBot");
+            }
         }
 
         private void Client_OnWhisperCommandReceived(object? sender, OnWhisperCommandReceivedArgs e)
@@ -236,7 +323,7 @@ namespace SysBot.Pokemon.Twitch
             if (response.Length == 0)
                 return;
 
-            client.SendWhisper(msg.Username, response);
+            SafeSendWhisper(msg.Username, response);
         }
 
         private void Client_OnWhisperReceived(object? sender, OnWhisperReceivedArgs e)
@@ -285,7 +372,7 @@ namespace SysBot.Pokemon.Twitch
                 // Only subscribers get AutoOT
                 bool ignoreAutoOT = !user.IsSubscriber;
                 var _ = AddToTradeQueue(user.Pokemon, code, e, sig, PokeRoutineType.LinkTrade, out string message, lgcode, ignoreAutoOT);
-                client.SendMessage(Channel, message);
+                SafeSendMessage(Channel, message);
             }
             catch (Exception ex)
             {

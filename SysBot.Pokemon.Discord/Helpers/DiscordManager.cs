@@ -30,6 +30,10 @@ public class DiscordManager(DiscordSettings Config)
 
     public RemoteControlAccessList RolesMysteryEgg => Config.RoleCanMysteryEgg;
 
+    public RemoteControlAccessList RolesBatchCommands => Config.RoleCanUseBatchCommands;
+
+    public RemoteControlAccessList RolesTrainerDataOverride => Config.RoleCanOverrideTrainerData;
+
     public RemoteControlAccessList RolesRemoteControl => Config.RoleRemoteControl;
 
     public RemoteControlAccessList RolesSeed => Config.RoleCanSeedCheckorSpecialRequest;
@@ -80,6 +84,8 @@ public class DiscordManager(DiscordSettings Config)
         nameof(RolesEgg) => RolesEgg,
         nameof(RolesBatchTrade) => RolesBatchTrade,
         nameof(RolesMysteryEgg) => RolesMysteryEgg,
+        nameof(RolesBatchCommands) => RolesBatchCommands,
+        nameof(RolesTrainerDataOverride) => RolesTrainerDataOverride,
         nameof(RolesRemoteControl) => RolesRemoteControl,
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };

@@ -589,7 +589,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 var errors = new List<BatchTradeError>();
                 for (int i = 0; i < trades.Count; i++)
                 {
-                    var (pk, error, set, legalizationHint) = await BatchHelpers<T>.ProcessSingleTradeForBatch(trades[i]);
+                    var userRoles = Context.User is SocketGuildUser batchGUser ? batchGUser.Roles.Select(r => r.Name) : null;
+                    var (pk, error, set, legalizationHint) = await BatchHelpers<T>.ProcessSingleTradeForBatch(trades[i], userRoles);
                     if (pk != null)
                     {
                         // If user doesn't have AutoOT permission, force ignoreAutoOT for all Pokémon in batch
@@ -664,7 +665,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         {
             try
             {
-                var result = await Helpers<T>.ProcessShowdownSetAsync(content);
+                var userRoles = Context.User is SocketGuildUser tradeGUser ? tradeGUser.Roles.Select(r => r.Name) : null;
+                var result = await Helpers<T>.ProcessShowdownSetAsync(content, userRoles: userRoles);
 
                 if (result.Pokemon == null)
                 {

@@ -84,16 +84,46 @@ public static class Helpers<T> where T : PKM, new()
         }
     }
 
-    public static Task<ProcessedPokemonResult<T>> ProcessShowdownSetAsync(string content, bool ignoreAutoOT = false)
+    public static Task<ProcessedPokemonResult<T>> ProcessShowdownSetAsync(string content, bool ignoreAutoOT = false, IEnumerable<string>? userRoles = null)
     {
         content = ReusableActions.StripCodeBlock(content);
         bool isEgg = TradeExtensions<T>.IsEggCheck(content);
+
+        // Check role-based permissions for Batch Commands and Trainer Data Override
+        bool canUseBatchCommands = true;
+        bool canOverrideTrainerData = true;
+
+        if (userRoles != null && SysCordSettings.Manager != null)
+        {
+            canUseBatchCommands = SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesBatchCommands), userRoles);
+            canOverrideTrainerData = SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesTrainerDataOverride), userRoles);
+        }
 
         if (!ShowdownParsing.TryParseAnyLanguage(content, out ShowdownSet? set) || set == null || set.Species == 0)
         {
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
                 Error = "Unable to parse Showdown set. Could not identify the Pokémon species.",
+                ShowdownSet = set
+            });
+        }
+
+        // Check for Batch Commands if user doesn't have permission
+        if (!canUseBatchCommands && ContainsBatchCommands(content))
+        {
+            return Task.FromResult(new ProcessedPokemonResult<T>
+            {
+                Error = "You don't have permission to use Batch Commands.",
+                ShowdownSet = set
+            });
+        }
+
+        // Check for Trainer Data Override if user doesn't have permission
+        if (!canOverrideTrainerData && ContainsTrainerDataOverride(set))
+        {
+            return Task.FromResult(new ProcessedPokemonResult<T>
+            {
+                Error = "You don't have permission to override trainer data (OT, TID, SID, Gender).",
                 ShowdownSet = set
             });
         }
@@ -415,5 +445,23 @@ public static class Helpers<T> where T : PKM, new()
         await QueueHelper<T>.AddToQueueAsync(context, code, trainerName, sig, pk!, PokeRoutineType.LinkTrade,
             tradeType, usr, isBatchTrade, batchTradeNumber, totalBatchTrades, isHiddenTrade, isMysteryEgg,
             lgcode: lgcode, ignoreAutoOT: ignoreAutoOT, setEdited: setEdited, isNonNative: isNonNative).ConfigureAwait(false);
+    }
+
+    private static bool ContainsBatchCommands(string content)
+    {
+        // Check for common batch editing patterns
+        return content.Contains('.') && 
+               (content.Contains('=') || content.Contains("++") || content.Contains("--") ||
+                content.Contains("Nature") || content.Contains("Ability") || content.Contains("Item") ||
+                content.Contains("EVs") || content.Contains("IVs") || content.Contains("Moves"));
+    }
+
+    private static bool ContainsTrainerDataOverride(ShowdownSet set)
+    {
+        // Check if the original content contains trainer data overrides
+        return set.Text.Contains("OT:") || 
+               set.Text.Contains("TID:") || 
+               set.Text.Contains("SID:") || 
+               set.Text.Contains("OTGender:");
     }
 }

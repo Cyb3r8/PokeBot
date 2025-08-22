@@ -108,24 +108,34 @@ public static class Helpers<T> where T : PKM, new()
             });
         }
 
-        // Check for Batch Commands if user doesn't have permission
+        // If user doesn't have permission for Batch Commands, remove them from content
         if (!canUseBatchCommands && ContainsBatchCommands(content))
         {
-            return Task.FromResult(new ProcessedPokemonResult<T>
+            content = RemoveBatchCommands(content);
+            // Re-parse the modified content
+            if (!ShowdownParsing.TryParseAnyLanguage(content, out set) || set == null || set.Species == 0)
             {
-                Error = "You don't have permission to use Batch Commands.",
-                ShowdownSet = set
-            });
+                return Task.FromResult(new ProcessedPokemonResult<T>
+                {
+                    Error = "Unable to parse Showdown set after removing batch commands.",
+                    ShowdownSet = set
+                });
+            }
         }
 
-        // Check for Trainer Data Override if user doesn't have permission
+        // If user doesn't have permission for Trainer Data Override, remove them from content
         if (!canOverrideTrainerData && ContainsTrainerDataOverride(set))
         {
-            return Task.FromResult(new ProcessedPokemonResult<T>
+            content = RemoveTrainerDataOverrides(content);
+            // Re-parse the modified content
+            if (!ShowdownParsing.TryParseAnyLanguage(content, out set) || set == null || set.Species == 0)
             {
-                Error = "You don't have permission to override trainer data (OT, TID, SID, Gender).",
-                ShowdownSet = set
-            });
+                return Task.FromResult(new ProcessedPokemonResult<T>
+                {
+                    Error = "Unable to parse Showdown set after removing trainer data overrides.",
+                    ShowdownSet = set
+                });
+            }
         }
 
         byte finalLanguage = LanguageHelper.GetFinalLanguage(
@@ -463,5 +473,43 @@ public static class Helpers<T> where T : PKM, new()
                set.Text.Contains("TID:") || 
                set.Text.Contains("SID:") || 
                set.Text.Contains("OTGender:");
+    }
+
+    private static string RemoveBatchCommands(string content)
+    {
+        var lines = content.Split('\n');
+        var filteredLines = new List<string>();
+        
+        foreach (var line in lines)
+        {
+            // Keep lines that don't contain batch command patterns
+            if (!(line.Contains('.') && 
+                  (line.Contains('=') || line.Contains("++") || line.Contains("--") ||
+                   line.Contains("Nature") || line.Contains("Ability") || line.Contains("Item") ||
+                   line.Contains("EVs") || line.Contains("IVs") || line.Contains("Moves"))))
+            {
+                filteredLines.Add(line);
+            }
+        }
+        
+        return string.Join("\n", filteredLines);
+    }
+
+    private static string RemoveTrainerDataOverrides(string content)
+    {
+        var lines = content.Split('\n');
+        var filteredLines = new List<string>();
+        
+        foreach (var line in lines)
+        {
+            // Remove lines that contain trainer data overrides
+            if (!(line.Contains("OT:") || line.Contains("TID:") || 
+                  line.Contains("SID:") || line.Contains("OTGender:")))
+            {
+                filteredLines.Add(line);
+            }
+        }
+        
+        return string.Join("\n", filteredLines);
     }
 }

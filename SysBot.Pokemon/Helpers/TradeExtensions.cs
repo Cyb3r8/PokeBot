@@ -366,8 +366,19 @@ public abstract class TradeExtensions<T> where T : PKM, new()
         // List of common TLDs to match
         const string domainPattern = @"(?<=\w)\.(com|org|net|gg|xyz|io|tv|co|me|us|uk|ca|de|fr|jp|au|eu|ch|it|nl|ru|br|in)\b";
 
-        bool ot = Regex.IsMatch(pk.OriginalTrainerName, domainPattern, RegexOptions.IgnoreCase);
-        bool nick = Regex.IsMatch(pk.Nickname, domainPattern, RegexOptions.IgnoreCase);
+        // Allow specific whitelisted names
+        var allowedNames = new[] { "hideoutpk.de" };
+        
+        bool otMatches = Regex.IsMatch(pk.OriginalTrainerName, domainPattern, RegexOptions.IgnoreCase);
+        bool nickMatches = Regex.IsMatch(pk.Nickname, domainPattern, RegexOptions.IgnoreCase);
+        
+        // Check if it's in the whitelist
+        bool otAllowed = allowedNames.Contains(pk.OriginalTrainerName, StringComparer.OrdinalIgnoreCase);
+        bool nickAllowed = allowedNames.Contains(pk.Nickname, StringComparer.OrdinalIgnoreCase);
+        
+        bool ot = otMatches && !otAllowed;
+        bool nick = nickMatches && !nickAllowed;
+        
         ad = ot ? pk.OriginalTrainerName : nick ? pk.Nickname : "";
         return ot || nick;
     }

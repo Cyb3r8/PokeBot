@@ -65,7 +65,7 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         }
     }
 
-    private async Task ConnectWithRetry(int maxRetries = 3)
+    private async Task ConnectWithRetry(int maxRetries = 10)
     {
         lock (connectionLock)
         {
@@ -101,7 +101,9 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
                 }
             }
             
-            LogUtil.LogError($"Alle {maxRetries} Twitch Verbindungsversuche fehlgeschlagen - Bot läuft ohne Twitch weiter", nameof(TwitchBot<T>));
+            LogUtil.LogError($"Alle {maxRetries} Twitch Verbindungsversuche fehlgeschlagen - Twitch wird durch Supervisor neu gestartet", nameof(TwitchBot<T>));
+            // Don't throw exception, let supervisor handle restart
+            isConnected = false;
         }
         finally
         {
@@ -189,17 +191,8 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         LogUtil.LogError($"Twitch Verbindungsfehler: {e.Error.Message}", nameof(TwitchBot<T>));
         isConnected = false;
         
-        if (!cancellationToken.IsCancellationRequested)
-        {
-            _ = Task.Delay(30000, cancellationToken).ContinueWith(async _ => 
-            {
-                if (!cancellationToken.IsCancellationRequested && !isConnected)
-                {
-                    LogUtil.LogInfo("Versuche Twitch Reconnect...", nameof(TwitchBot<T>));
-                    await ConnectWithRetry();
-                }
-            }, TaskScheduler.Default);
-        }
+        // Let supervisor handle reconnection, don't auto-reconnect here
+        LogUtil.LogInfo("Twitch connection error - supervisor will handle restart", nameof(TwitchBot<T>));
     }
 
     private void OnDisconnected(object? sender, OnDisconnectedEventArgs e)
@@ -207,17 +200,8 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         LogUtil.LogInfo("Twitch Verbindung getrennt", nameof(TwitchBot<T>));
         isConnected = false;
         
-        if (!cancellationToken.IsCancellationRequested)
-        {
-            _ = Task.Delay(10000, cancellationToken).ContinueWith(async _ =>
-            {
-                if (!cancellationToken.IsCancellationRequested && !isConnected)
-                {
-                    LogUtil.LogInfo("Versuche Twitch Reconnect nach Disconnect...", nameof(TwitchBot<T>));
-                    await ConnectWithRetry();
-                }
-            }, TaskScheduler.Default);
-        }
+        // Let supervisor handle reconnection after disconnect
+        LogUtil.LogInfo("Twitch disconnect detected - supervisor will handle restart", nameof(TwitchBot<T>));
     }
 
     private void OnFailureToReceiveJoinConfirmation(object? sender, OnFailureToReceiveJoinConfirmationArgs e)

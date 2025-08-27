@@ -56,7 +56,22 @@ public class PokeBotRunnerImpl<T> : PokeBotRunner<T> where T : PKM, new()
         if (string.IsNullOrWhiteSpace(config.Token))
             return;
 
-        Twitch = new TwitchBot<T>(Hub.Config.Twitch, Hub);
+        Twitch = new TwitchBot<T>(Hub.Config.Twitch, Hub.Config);
+        TwitchBot<T>.Hub = Hub;
+        
+        // Start Twitch Bot asynchronously with proper error handling
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Twitch.StartAsync(CancellationToken.None);
+            }
+            catch (System.Exception ex)
+            {
+                SysBot.Base.LogUtil.LogError($"Twitch Bot Start fehlgeschlagen: {ex.Message} - Hauptbot läuft weiter", nameof(PokeBotRunnerImpl<T>));
+            }
+        });
+        
         if (Hub.Config.Twitch.DistributionCountDown)
             Hub.BotSync.BarrierReleasingActions.Add(() => Twitch.StartingDistribution(config.MessageStart));
     }

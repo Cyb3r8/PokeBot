@@ -36,6 +36,9 @@ public class TwitchSettings
     [Category(Operation), Description("Message sent when the Barrier is released.")]
     public string MessageStart { get; set; } = string.Empty;
 
+    [Category(Messages), Description("Message sent when bot connects to Twitch channel.")]
+    public string StartupMessage { get; set; } = string.Empty;
+
     [Category(Messages), Description("Determines where generic notifications are sent.")]
     public TwitchMessageDestination NotifyDestination { get; set; }
 

@@ -211,7 +211,20 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
 
     private void OnLog(object? sender, OnLogArgs e)
     {
-        LogUtil.LogInfo($"Twitch: {e.Data}", nameof(TwitchBot<T>));
+        // Filter out ping/pong and other routine messages to reduce log spam
+        var data = e.Data?.ToLower() ?? "";
+        if (data.Contains("ping") || data.Contains("pong") || 
+            data.Contains("privmsg") || data.Contains("usernotice") ||
+            data.Contains("roomstate") || data.Contains("userstate"))
+            return;
+            
+        // Only log important events like errors or connection status
+        if (data.Contains("error") || data.Contains("disconnect") || 
+            data.Contains("connect") || data.Contains("join") || 
+            data.Contains("notice"))
+        {
+            LogUtil.LogInfo($"Twitch: {e.Data}", nameof(TwitchBot<T>));
+        }
     }
 
     private void OnJoinedChannel(object? sender, OnJoinedChannelArgs e)

@@ -30,11 +30,18 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
     private bool isConnecting = false;
     private readonly object connectionLock = new();
     private CancellationToken cancellationToken;
+    private Action<string>? echoForwarder;
+    private System.Timers.Timer? userCommandCleanupTimer;
 
     public TwitchBot(TwitchSettings settings, PokeTradeHubConfig config)
     {
         Settings = settings;
         Config = config;
+        
+        // Setup cleanup timer for UserLastCommand dictionary
+        userCommandCleanupTimer = new System.Timers.Timer(TimeSpan.FromMinutes(10).TotalMilliseconds);
+        userCommandCleanupTimer.Elapsed += CleanupUserCommands;
+        userCommandCleanupTimer.Start();
     }
 
     public bool IsConnected => isConnected && client?.IsConnected == true;
@@ -155,6 +162,9 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         client.OnError += (_, e) =>
             LogUtil.LogError(e.Exception.Message + Environment.NewLine + e.Exception.StackTrace, "TwitchBot");
 
+        // Store the forwarder reference so we can remove it later
+        echoForwarder = msg => SendMessage(msg);
+
         var connectTask = Task.Run(() => client.Connect());
         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
         
@@ -173,7 +183,8 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         var joinWaitTask = Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
         await joinWaitTask;
 
-        EchoUtil.Forwarders.Add(msg => SendMessage(msg));
+        if (echoForwarder != null)
+            EchoUtil.Forwarders.Add(echoForwarder);
     }
 
     private void OnConnected(object? sender, OnConnectedArgs e)
@@ -230,7 +241,7 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
     private void OnJoinedChannel(object? sender, OnJoinedChannelArgs e)
     {
         LogUtil.LogInfo($"Twitch Bot joined channel: {e.Channel}", nameof(TwitchBot<T>));
-        EchoUtil.Forwarders.Add(msg => SendMessage(msg));
+        // Don't add forwarder again - already added in ConnectInternal
     }
 
     private void OnLeftChannel(object? sender, OnLeftChannelArgs e)
@@ -380,9 +391,7 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
     {
         try
         {
-            isConnected = false;
-            client?.Disconnect();
-            client = null;
+            CleanupResources();
             LogUtil.LogInfo("Twitch Bot gestoppt", nameof(TwitchBot<T>));
         }
         catch (Exception ex)
@@ -396,9 +405,7 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
     {
         try
         {
-            isConnected = false;
-            client?.Disconnect();
-            client = null;
+            CleanupResources();
             LogUtil.LogInfo("Twitch Bot gestoppt", nameof(TwitchBot<T>));
         }
         catch (Exception ex)
@@ -411,13 +418,101 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
     {
         try
         {
-            isConnected = false;
-            client?.Disconnect();
-            client = null;
+            CleanupResources();
         }
         catch (Exception ex)
         {
             LogUtil.LogError($"Fehler beim Dispose des Twitch Bots: {ex.Message}", nameof(TwitchBot<T>));
+        }
+    }
+
+    private void CleanupResources()
+    {
+        isConnected = false;
+        
+        // Cleanup event handlers before disconnecting
+        UnsubscribeEventHandlers();
+        
+        // Disconnect and dispose client
+        client?.Disconnect();
+        client = null;
+        
+        // Remove echo forwarder
+        if (echoForwarder != null)
+        {
+            try
+            {
+                EchoUtil.Forwarders.Remove(echoForwarder);
+                echoForwarder = null;
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Error removing echo forwarder: {ex.Message}", nameof(TwitchBot<T>));
+            }
+        }
+        
+        // Cleanup timer
+        userCommandCleanupTimer?.Stop();
+        userCommandCleanupTimer?.Dispose();
+        userCommandCleanupTimer = null;
+        
+        // Clear user command cache
+        UserLastCommand.Clear();
+    }
+
+    private void UnsubscribeEventHandlers()
+    {
+        if (client != null)
+        {
+            try
+            {
+                client.OnLog -= OnLog;
+                client.OnJoinedChannel -= OnJoinedChannel;
+                client.OnMessageReceived -= OnMessageReceived;
+                client.OnWhisperReceived -= OnWhisperReceived;
+                client.OnChatCommandReceived -= OnChatCommandReceived;
+                client.OnWhisperCommandReceived -= OnWhisperCommandReceived;
+                client.OnConnected -= OnConnected;
+                client.OnIncorrectLogin -= OnIncorrectLogin;
+                client.OnConnectionError -= OnConnectionError;
+                client.OnDisconnected -= OnDisconnected;
+                client.OnFailureToReceiveJoinConfirmation -= OnFailureToReceiveJoinConfirmation;
+                client.OnLeftChannel -= OnLeftChannel;
+                
+                // Remove anonymous event handlers
+                client.OnMessageSent -= (_, e) => LogUtil.LogText($"[{client.TwitchUsername}] - Message Sent in {e.SentMessage.Channel}: {e.SentMessage.Message}");
+                client.OnWhisperSent -= (_, e) => LogUtil.LogText($"[{client.TwitchUsername}] - Whisper Sent to @{e.Receiver}: {e.Message}");
+                client.OnMessageThrottled -= (_, e) => LogUtil.LogError($"Message Throttled: {e.Message}", "TwitchBot");
+                client.OnWhisperThrottled -= (_, e) => LogUtil.LogError($"Whisper Throttled: {e.Message}", "TwitchBot");
+                client.OnError -= (_, e) => LogUtil.LogError(e.Exception.Message + Environment.NewLine + e.Exception.StackTrace, "TwitchBot");
+            }
+            catch (Exception ex)
+            {
+                LogUtil.LogError($"Error unsubscribing event handlers: {ex.Message}", nameof(TwitchBot<T>));
+            }
+        }
+    }
+
+    private void CleanupUserCommands(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow.AddHours(-1); // Remove entries older than 1 hour
+            var keysToRemove = UserLastCommand.Where(kvp => kvp.Value < cutoff).Select(kvp => kvp.Key).ToList();
+            
+            foreach (var key in keysToRemove)
+            {
+                UserLastCommand.Remove(key);
+            }
+            
+            if (keysToRemove.Count > 0)
+            {
+                LogUtil.LogInfo($"Cleaned up {keysToRemove.Count} old user command entries", nameof(TwitchBot<T>));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Error during user command cleanup: {ex.Message}", nameof(TwitchBot<T>));
         }
     }
 

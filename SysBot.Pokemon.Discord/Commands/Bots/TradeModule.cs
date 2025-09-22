@@ -727,6 +727,22 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 {
                     // User doesn't have AutoOT permission, force ignoreAutoOT to true
                     ignoreAutoOT = true;
+
+                    // Immediately legalize the Pokemon to remove original trainer data
+                    try
+                    {
+                        var legalized = pk.LegalizePokemon();
+                        if (legalized != null && new LegalityAnalysis(legalized).Valid)
+                        {
+                            pk = (T)legalized;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUtil.LogSafe(ex, nameof(TradeModule<T>));
+                        // If legalization fails, continue with original Pokemon
+                        // The bot will handle it during trade processing
+                    }
                 }
             }
         }

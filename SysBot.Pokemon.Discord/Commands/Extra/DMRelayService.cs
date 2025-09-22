@@ -28,7 +28,7 @@ namespace SysBot.Pokemon.Discord.Helpers
 
             // Skip commands
             int argPos = 0;
-            if (umsg.HasCharPrefix('.', ref argPos) || umsg.HasMentionPrefix(_client.CurrentUser, ref argPos))
+            if (umsg.HasCharPrefix('.', ref argPos) || umsg.HasCharPrefix('%', ref argPos) || umsg.HasCharPrefix('$', ref argPos) || umsg.HasMentionPrefix(_client.CurrentUser, ref argPos))
                 return;
 
             // Build the base forward message

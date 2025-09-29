@@ -33,7 +33,8 @@ public static class WebApiExtensions
     public static void InitWebServer(this Main mainForm)
     {
         _main = mainForm;
-        
+        _cts = new CancellationTokenSource(); // Initialize early for background tasks
+
         // Get the configured port from settings
         if (mainForm.Config?.Hub?.WebServer != null)
         {
@@ -121,10 +122,17 @@ public static class WebApiExtensions
             // Periodically clean up completed update sessions
             _ = Task.Run(async () =>
             {
-                while (true)
+                while (_cts != null && !_cts.Token.IsCancellationRequested)
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(30));
-                    UpdateManager.ClearState();
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(30), _cts.Token);
+                        UpdateManager.ClearState();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break; // Exit gracefully when cancelled
+                    }
                 }
             });
         }
@@ -321,7 +329,7 @@ public static class WebApiExtensions
 
     private static void StartTcp()
     {
-        _cts = new CancellationTokenSource();
+        _cts ??= new CancellationTokenSource(); // Only create if not already created
         Task.Run(() => StartTcpListenerAsync(_cts.Token));
     }
     

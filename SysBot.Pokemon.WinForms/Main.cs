@@ -54,6 +54,7 @@ namespace SysBot.Pokemon.WinForms
 
         private SearchManager _searchManager = null!;
         private LogViewerForwarder _logViewerForwarder = null!;
+        private TextBoxForwarder _textBoxForwarder = null!;
 
         internal bool hasUpdate = false;
         private bool _isRestoringFromTray = false;
@@ -438,7 +439,8 @@ namespace SysBot.Pokemon.WinForms
             // Apply enhanced styling to the game selector
             ConfigureGameSelector();
 
-            LogUtil.Forwarders.Add(new TextBoxForwarder(RTB_Logs));
+            _textBoxForwarder = new TextBoxForwarder(RTB_Logs);
+            LogUtil.Forwarders.Add(_textBoxForwarder);
             LogUtil.Forwarders.Add(_logViewerForwarder);
         }
 
@@ -455,7 +457,11 @@ namespace SysBot.Pokemon.WinForms
         private void Main_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (IsUpdating) return;
-            
+
+            // Remove log forwarders to prevent memory leaks
+            LogUtil.Forwarders.Remove(_textBoxForwarder);
+            LogUtil.Forwarders.Remove(_logViewerForwarder);
+
             // Let the form close normally when X button is clicked
             // No longer minimizing to tray on close
             this.StopWebServer();

@@ -1,5 +1,5 @@
 namespace SysBot.Pokemon.Helpers
-{
+{ 
     public static class PokeBot
     {
         public const string Attribution = "https://github.com/Cyb3r8/PokeBot";

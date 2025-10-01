@@ -187,7 +187,7 @@ public static class WebApiExtensions
 
                         try
                         {
-                            var process = Process.GetProcessById(pid);
+                            using var process = Process.GetProcessById(pid);
                             if (process.ProcessName.Contains("SysBot", StringComparison.OrdinalIgnoreCase) ||
                                 process.ProcessName.Contains("PokeBot", StringComparison.OrdinalIgnoreCase))
                             {

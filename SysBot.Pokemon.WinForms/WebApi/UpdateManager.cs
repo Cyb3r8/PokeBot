@@ -1186,7 +1186,7 @@ public static class UpdateManager
             
             try
             {
-                var process = Process.GetProcessById(instance.ProcessId);
+                using var process = Process.GetProcessById(instance.ProcessId);
                 if (process.HasExited) break;
             }
             catch (ArgumentException)

@@ -709,7 +709,7 @@ public static class RestartManager
         {
             try
             {
-                var process = Process.GetProcessById(processId);
+                using var process = Process.GetProcessById(processId);
                 if (process.HasExited)
                     return true;
             }
@@ -814,7 +814,7 @@ public static class RestartManager
                     
                 try
                 {
-                    var process = Process.GetProcessById(pid);
+                    using var process = Process.GetProcessById(pid);
                     if (process != null && !process.HasExited)
                     {
                         LogUtil.LogInfo($"Killing lingering old process {pid} ({process.ProcessName})", "RestartManager");

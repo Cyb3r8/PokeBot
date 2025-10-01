@@ -927,15 +927,15 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         const int startPort = 8081;
         const int endPort = 8090; // Reduced from 8181 to 8090 for faster scanning
         const int maxConcurrentScans = 5; // Throttle concurrent connections
-        
-        var semaphore = new SemaphoreSlim(maxConcurrentScans, maxConcurrentScans);
+
+        using var semaphore = new SemaphoreSlim(maxConcurrentScans, maxConcurrentScans);
         var tasks = new List<Task>();
-        
+
         for (int port = startPort; port <= endPort; port++)
         {
             if (port == _tcpPort)
                 continue;
-                
+
             int capturedPort = port; // Capture for closure
             tasks.Add(Task.Run(async () =>
             {
@@ -946,29 +946,29 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                     using var client = new TcpClient();
                     client.ReceiveTimeout = 500; // Increased from 200ms to 500ms
                     client.SendTimeout = 500;
-                    
+
                     var connectTask = client.ConnectAsync("127.0.0.1", capturedPort);
                     var timeoutTask = Task.Delay(500);
                     var completedTask = await Task.WhenAny(connectTask, timeoutTask);
                     if (completedTask == timeoutTask || !client.Connected)
                         return;
-                    
+
                     using var stream = client.GetStream();
                     using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
                     using var reader = new StreamReader(stream, Encoding.UTF8);
 
                     await writer.WriteLineAsync("INFO");
                     await writer.FlushAsync();
-                    
+
                     // Read response with timeout
                     stream.ReadTimeout = 1000; // Increased from 500ms to 1000ms
                     var response = await reader.ReadLineAsync();
-                    
+
                     if (!string.IsNullOrEmpty(response) && response.StartsWith('{'))
                     {
                         // This is a PokeBot instance - find the process ID
                         int processId = FindProcessIdForPort(capturedPort);
-                        
+
                         var instance = new BotInstance
                         {
                             ProcessId = processId,
@@ -985,7 +985,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
                         // Update instance info from the response
                         UpdateInstanceInfo(instance, capturedPort);
-                        
+
                         lock (instances) // Thread-safe addition
                         {
                             instances.Add(instance);
@@ -1000,7 +1000,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 }
             }));
         }
-        
+
         // Wait for all port scans to complete with overall timeout
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
@@ -1112,10 +1112,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         
         try
         {
-            var process = Process.GetProcessById(processId);
+            using var process = Process.GetProcessById(processId);
             return process.MainModule?.FileName;
         }
-        catch 
+        catch
         {
             return null;
         }

@@ -53,22 +53,8 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
     }
-<<<<<<< HEAD
 
-    // Regex patterns for performance
-    [System.Text.RegularExpressions.GeneratedRegex(@"^([A-Za-z]+-\d+)\s+(.+)$")]
-    private static partial System.Text.RegularExpressions.Regex BotNameRegex();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"^\[Port:(\d+)\]\s+(.+)$")]
-    private static partial System.Text.RegularExpressions.Regex PortRegex();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"^(\S+)\s+(.+)$")]
-    private static partial System.Text.RegularExpressions.Regex ServiceRegex();
-
-=======
-    
-    
->>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
     [System.Text.RegularExpressions.GeneratedRegex(@"[<>""'&;\/]")]
     private static partial System.Text.RegularExpressions.Regex CleanupRegex();
 
@@ -272,10 +258,6 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
         }
     }
-<<<<<<< HEAD
-
-=======
->>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
     private async Task<(int statusCode, object? content, string contentType)> ProcessRequestAsync(HttpListenerRequest request)
     {
         var path = request.Url?.LocalPath ?? "";
@@ -1514,209 +1496,8 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
     {
         return JsonSerializer.Serialize(ApiResponseFactory.CreateSimpleError(message), JsonOptions);
     }
-<<<<<<< HEAD
 
-    private async Task<(int statusCode, object? content, string contentType)> GetLogsAsync(HttpListenerRequest request)
-    {
-        try
-        {
-            var query = System.Web.HttpUtility.ParseQueryString(request.Url?.Query ?? "");
-            var port = SanitizeQueryParameter(query["port"], 10);
-            var search = SanitizeQueryParameter(query["search"], 100);
-            var source = SanitizeQueryParameter(query["source"], 50);
-            var level = SanitizeQueryParameter(query["level"], 20);
 
-            // Determine which log file to read based on the requested port
-            string logFile;
-            if (!string.IsNullOrEmpty(port) && int.TryParse(port, out var portNumber) && portNumber != _tcpPort)
-            {
-                // Remote instance - get its log file path
-                var instanceInfo = await GetInstanceInfoAsync(portNumber);
-                if (instanceInfo == null || string.IsNullOrEmpty(instanceInfo.ProcessPath))
-                {
-                    LogUtil.LogError($"Could not determine process path for port {port}", "WebServer");
-                    return (200, JsonSerializer.Serialize(new { logs = Array.Empty<object>() }), "application/json");
-                }
-
-                var remoteWorkingDirectory = Path.GetDirectoryName(instanceInfo.ProcessPath)!;
-                logFile = Path.Combine(remoteWorkingDirectory, "logs", "SysBotLog.txt");
-            }
-            else
-            {
-                // Local instance - use current process path
-                var workingDirectory = Path.GetDirectoryName(Environment.ProcessPath)!;
-                logFile = Path.Combine(workingDirectory, "logs", "SysBotLog.txt");
-            }
-
-            if (!File.Exists(logFile))
-            {
-                LogUtil.LogError($"Log file not found at: {logFile}", "WebServer");
-                return (200, JsonSerializer.Serialize(new { logs = Array.Empty<object>() }), "application/json");
-            }
-
-            // Read entire log file
-            var allLines = await ReadAllLinesAsync(logFile);
-            var logs = new List<object>();
-
-            // Process all lines first to get the newest 500
-            var parsedLogs = new List<(string timestamp, string level, string identity, string message, int port)>();
-
-            foreach (var line in allLines)
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                // Parse NLog format: "2024-01-01 12:00:00.1234|INFO|SysBot.Base.LogUtil|Identity Message"
-                var parts = line.Split('|');
-                if (parts.Length < 4)
-                    continue;
-
-                var timestamp = parts[0].Trim();
-                var logLevel = parts[1].Trim().ToLower();
-                var logger = parts[2].Trim(); // e.g., "SysBot.Base.LogUtil"
-                var content = string.Join("|", parts.Skip(3)); // Join remaining parts in case message contains |
-
-                // Filter by level if specified
-                if (!string.IsNullOrEmpty(level) && !logLevel.Equals(level, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                // Extract identity and message from content
-                string identity;
-                string message;
-                int? instancePort = null;
-
-                // Check if the message starts with a known bot name pattern (e.g., "Oddish-240322" or "Tia-505008")
-                var botMatch = BotNameRegex().Match(content);
-                if (botMatch.Success)
-                {
-                    identity = botMatch.Groups[1].Value;
-                    message = botMatch.Groups[2].Value;
-                }
-                else
-                {
-                    // Check for instance-specific logs with port info (e.g., "[Port:8082] Message")
-                    var portMatch = PortRegex().Match(content);
-                    if (portMatch.Success)
-                    {
-                        instancePort = int.Parse(portMatch.Groups[1].Value);
-                        message = portMatch.Groups[2].Value;
-                        identity = $"Instance-{instancePort}";
-                    }
-                    else
-                    {
-                        // Otherwise, check for service names (e.g., "BotTaskService", "TradeQueueInfo")
-                        var serviceMatch = ServiceRegex().Match(content);
-                        if (serviceMatch.Success)
-                        {
-                            identity = serviceMatch.Groups[1].Value;
-                            message = serviceMatch.Groups[2].Value;
-                        }
-                        else
-                        {
-                            // If no pattern matches, use the logger name as identity
-                            identity = logger.Split('.').Last();
-                            message = content;
-                        }
-                    }
-                }
-
-                // Filter by source/identity if specified
-                if (!string.IsNullOrEmpty(source) && !identity.Contains(source, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                // No need for port filtering - each instance has its own log file
-
-                // Filter by search if specified
-                if (!string.IsNullOrEmpty(search) && !message.Contains(search, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                parsedLogs.Add((timestamp, logLevel, identity, message, instancePort ?? _tcpPort));
-            }
-
-            // Take only the last 500 logs (newest)
-            var recentLogs = parsedLogs.TakeLast(500);
-
-            // Convert to the final format
-            foreach (var (logTimestamp, logLevel, logIdentity, logMessage, logPort) in recentLogs)
-            {
-                logs.Add(new
-                {
-                    timestamp = logTimestamp,
-                    level = logLevel,
-                    identity = logIdentity,
-                    message = logMessage,
-                    port = logPort
-                });
-            }
-
-            return (200, JsonSerializer.Serialize(new { logs }), "application/json");
-        }
-        catch (Exception ex)
-        {
-            LogUtil.LogError($"Failed to read logs: {ex.Message}", "WebServer");
-            return (500, CreateErrorResponse("Failed to read logs"), "application/json");
-        }
-    }
-
-    private async Task<BotInstance?> GetInstanceInfoAsync(int port)
-    {
-        if (port == _tcpPort)
-        {
-            return CreateLocalInstance();
-        }
-
-        var remoteInstances = await ScanRemoteInstancesAsync();
-        return remoteInstances.FirstOrDefault(i => i.Port == port);
-    }
-
-    private static async Task<List<string>> ReadAllLinesAsync(string filePath)
-    {
-        var lines = new List<string>();
-
-        // Read the entire file
-        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-        // Use Unicode encoding (UTF-16) to match LogUtil configuration
-        // Detect and handle BOM automatically
-        using var reader = new StreamReader(fs, Encoding.Unicode, detectEncodingFromByteOrderMarks: true);
-
-        string? line;
-        while ((line = await reader.ReadLineAsync()) != null)
-        {
-            lines.Add(line);
-        }
-
-        return lines;
-    }
-
-    private static async Task<List<string>> ReadLastLinesAsync(string filePath, int lineCount)
-    {
-        var lines = new List<string>();
-
-        // Read the entire file to ensure we get all content including new logs
-        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-        // Use Unicode encoding (UTF-16) to match LogUtil configuration
-        // Detect and handle BOM automatically
-        using var reader = new StreamReader(fs, Encoding.Unicode, detectEncodingFromByteOrderMarks: true);
-
-        string? line;
-        while ((line = await reader.ReadLineAsync()) != null)
-        {
-            lines.Add(line);
-            // Keep only the last N*2 lines in memory to avoid excessive memory usage
-            if (lines.Count > lineCount * 2)
-                lines.RemoveAt(0);
-        }
-
-        // Return only the last N lines
-        return lines.Count > lineCount ? lines.GetRange(lines.Count - lineCount, lineCount) : lines;
-    }
-
-=======
-    
-    
->>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
     private bool IsMasterInstance()
     {
         // Master is the instance hosting the web server on the configured control panel port

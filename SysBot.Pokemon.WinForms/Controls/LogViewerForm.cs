@@ -481,6 +481,7 @@ namespace SysBot.Pokemon.WinForms.Controls
         private void StartFadeAnimation(bool fadeIn)
         {
             _animationTimer?.Stop();
+            _animationTimer?.Dispose();
             _animationTimer = new System.Windows.Forms.Timer { Interval = 10 };
             
             _animationTimer.Tick += (s, e) =>

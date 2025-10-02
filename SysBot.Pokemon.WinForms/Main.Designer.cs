@@ -915,6 +915,9 @@ namespace SysBot.Pokemon.WinForms
         {
             var animState = btn.Tag as EnhancedButtonAnimationState;
 
+            if (animState != null && !_animatedControls.Contains(btn))
+                _animatedControls.Add(btn);
+
             btn.MouseEnter += (s, e) => {
                 animState.IsHovering = true;
                 animState.AnimationStart = DateTime.Now;
@@ -968,6 +971,9 @@ namespace SysBot.Pokemon.WinForms
             var animState = control.Tag as ButtonAnimationState ?? new ButtonAnimationState();
             control.Tag = animState;
 
+            if (!_animatedControls.Contains(control))
+                _animatedControls.Add(control);
+
             control.MouseEnter += (s, e) => {
                 animState.IsHovering = true;
                 animState.AnimationStart = DateTime.Now;
@@ -1006,6 +1012,9 @@ namespace SysBot.Pokemon.WinForms
         {
             panel.Paint += (s, e) => {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+                panel.Region?.Dispose();
+
                 using var path = new GraphicsPath();
                 var rect = panel.ClientRectangle;
                 rect.Inflate(-1, -1);
@@ -1031,6 +1040,8 @@ namespace SysBot.Pokemon.WinForms
 
         private void CreateCircularRegion(Control control)
         {
+            control.Region?.Dispose();
+
             using var path = new GraphicsPath();
             path.AddEllipse(0, 0, control.Width, control.Height);
             control.Region = new Region(path);
@@ -1193,10 +1204,10 @@ namespace SysBot.Pokemon.WinForms
                 e.Graphics.DrawLine(pen, 0, rect.Height - 1, rect.Width, rect.Height - 1);
             }
 
-            // Calculate bot states
-            _runningBotCount = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
-            _idlingBotCount = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsPaused ?? false);
-            _totalBotCount = FLP_Bots.Controls.OfType<BotController>().Count();
+            var botControllers = FLP_Bots.Controls.OfType<BotController>().ToArray();
+            _runningBotCount = botControllers.Count(c => c.GetBot()?.IsRunning ?? false);
+            _idlingBotCount = botControllers.Count(c => c.GetBot()?.IsPaused ?? false);
+            _totalBotCount = botControllers.Length;
 
             float activityLevel = _totalBotCount > 0 ? (float)_runningBotCount / _totalBotCount : 0f;
             float idleLevel = _totalBotCount > 0 ? (float)_idlingBotCount / _totalBotCount : 0f;
@@ -1732,11 +1743,9 @@ namespace SysBot.Pokemon.WinForms
         
         private void AnimationTimer_Tick(object sender, EventArgs e)
         {
-            // Update logo animations
             AnimateGears();
-            
-            // Handle button hover animations
-            foreach (Control control in GetAllControls(this))
+
+            foreach (Control control in _animatedControls)
             {
                 if (control.Tag is ButtonAnimationState animState)
                 {
@@ -1833,12 +1842,6 @@ namespace SysBot.Pokemon.WinForms
             contentPanel.ResumeLayout(true);
             contentPanel.PerformLayout();
             contentPanel.Refresh();
-        }
-
-        private IEnumerable<Control> GetAllControls(Control container)
-        {
-            var controls = container.Controls.Cast<Control>();
-            return controls.SelectMany(ctrl => GetAllControls(ctrl)).Concat(controls);
         }
 
         #endregion
@@ -2027,6 +2030,7 @@ namespace SysBot.Pokemon.WinForms
         private int _totalBotCount = 0;
         private float _gearRotation1 = 0f;
         private float _gearRotation2 = 0f;
+        private readonly List<Control> _animatedControls = new();
         private System.Windows.Forms.Timer animationTimer;
         #endregion
     }

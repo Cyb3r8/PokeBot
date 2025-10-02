@@ -791,13 +791,15 @@ namespace SysBot.Pokemon.WinForms
         private void BtnActions_Paint(object sender, PaintEventArgs e)
         {
             if (_suspendPainting) return;
-            
+
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
             if (sender is not Button btn) return;
             var rect = btn.ClientRectangle;
+
+            btn.Region?.Dispose();
 
             using var path = new GraphicsPath();
             GraphicsExtensions.AddRoundedRectangle(path, rect, 4);

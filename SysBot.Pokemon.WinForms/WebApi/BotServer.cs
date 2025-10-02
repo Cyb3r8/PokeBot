@@ -13,7 +13,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
 using SysBot.Base;
-using SysBot.Pokemon.WinForms.Controls;
 using SysBot.Pokemon.WinForms.WebApi.Models;
 using static SysBot.Pokemon.WinForms.WebApi.RestartManager;
 
@@ -54,6 +53,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
     }
+<<<<<<< HEAD
 
     // Regex patterns for performance
     [System.Text.RegularExpressions.GeneratedRegex(@"^([A-Za-z]+-\d+)\s+(.+)$")]
@@ -65,6 +65,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
     [System.Text.RegularExpressions.GeneratedRegex(@"^(\S+)\s+(.+)$")]
     private static partial System.Text.RegularExpressions.Regex ServiceRegex();
 
+=======
+    
+    
+>>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
     [System.Text.RegularExpressions.GeneratedRegex(@"[<>""'&;\/]")]
     private static partial System.Text.RegularExpressions.Regex CleanupRegex();
 
@@ -268,7 +272,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
         }
     }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
     private async Task<(int statusCode, object? content, string contentType)> ProcessRequestAsync(HttpListenerRequest request)
     {
         var path = request.Url?.LocalPath ?? "";
@@ -278,7 +285,6 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             "/" => (200, HtmlTemplate, "text/html"),
             "/BotControlPanel.css" => (200, LoadEmbeddedResource("BotControlPanel.css"), "text/css"),
             "/BotControlPanel.js" => (200, LoadEmbeddedResource("BotControlPanel.js"), "text/javascript"),
-            "/api/logs" => await GetLogsAsync(request),
             "/api/bot/instances" => (200, await GetInstancesAsync(), "application/json"),
             var p when p.StartsWith("/api/bot/instances/") && p.EndsWith("/bots") =>
                 (200, await Task.FromResult(GetBots(ExtractPort(p))), "application/json"),
@@ -1508,6 +1514,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
     {
         return JsonSerializer.Serialize(ApiResponseFactory.CreateSimpleError(message), JsonOptions);
     }
+<<<<<<< HEAD
 
     private async Task<(int statusCode, object? content, string contentType)> GetLogsAsync(HttpListenerRequest request)
     {
@@ -1706,6 +1713,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         return lines.Count > lineCount ? lines.GetRange(lines.Count - lineCount, lineCount) : lines;
     }
 
+=======
+    
+    
+>>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
     private bool IsMasterInstance()
     {
         // Master is the instance hosting the web server on the configured control panel port

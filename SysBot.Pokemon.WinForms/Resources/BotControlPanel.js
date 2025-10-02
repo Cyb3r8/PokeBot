@@ -1004,9 +1004,12 @@ class BotControlPanel {
         // Initialize restart manager
         this.restartManager = new RestartManager(this);
 
+<<<<<<< HEAD
         // Initialize log viewer
         this.logViewer = new LogViewer(this);
 
+=======
+>>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
         // Initialize remote control
         this.remoteControl = new RemoteControl(this);
     }
@@ -1136,7 +1139,6 @@ class BotControlPanel {
             'close-update-modal',
             'cancel-update',
             'close-actions-modal',
-            'close-log-viewer',
             'close-remote-control'
         ];
 
@@ -1196,9 +1198,7 @@ class BotControlPanel {
      * @param {string} action - Action name
      */
     handleInstanceAction(port, action) {
-        if (action === 'logs') {
-            this.logViewer.open(parseInt(port));
-        } else if (action === 'remote') {
+        if (action === 'remote') {
             this.remoteControl.open(parseInt(port));
         } else {
             this.commandManager.sendToInstance(parseInt(port), action);
@@ -2298,6 +2298,7 @@ class RestartManager {
 }
 
 // ============================================================================
+<<<<<<< HEAD
 // LOG VIEWER MODULE
 // ============================================================================
 
@@ -2548,6 +2549,8 @@ class LogViewer {
 }
 
 // ============================================================================
+=======
+>>>>>>> 591c1fa03b40b078f99a24a5d3f9e0fe448e6fbf
 // REMOTE CONTROL MODULE
 // ============================================================================
 
@@ -3062,7 +3065,6 @@ if (typeof module !== 'undefined' && module.exports) {
         CommandManager,
         UpdateManager,
         RestartManager,
-        LogViewer,
         RemoteControl
     };
 }

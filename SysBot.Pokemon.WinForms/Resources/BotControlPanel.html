@@ -475,79 +475,9 @@
                         🌙 Screen Off
                     </button>
                     <div class="action-modal-divider"></div>
-                    <button class="action-modal-item" data-action="logs">
-                        📋 View Logs
-                    </button>
-                    <div class="action-modal-divider"></div>
                     <button class="action-modal-item" data-action="remote">
                         🎮 Remote Control
                     </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal" id="log-viewer-modal">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>📋 Live Log Viewer</h2>
-                <button class="modal-close" id="close-log-viewer">×</button>
-            </div>
-            <div class="modal-body log-viewer-body">
-                <div class="log-controls">
-                    <div class="log-filters">
-                        <input type="text" id="log-search" class="log-search" placeholder="🔍 Search logs...">
-                        <select id="log-instance-filter" class="log-filter-select">
-                            <option value="">All Sources</option>
-                        </select>
-                        <select id="log-level-filter" class="log-filter-select">
-                            <option value="">All Levels</option>
-                            <option value="info">Info</option>
-                            <option value="warning">Warning</option>
-                            <option value="error">Error</option>
-                            <option value="debug">Debug</option>
-                        </select>
-                    </div>
-                    <div class="log-actions">
-                        <label class="toggle-switch" for="log-autoscroll">
-                            <input type="checkbox" id="log-autoscroll" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="toggle-label">Auto-scroll</span>
-                        <button class="btn btn-sm" id="log-pause-btn">
-                            ⏸️ Pause
-                        </button>
-                        <button class="btn btn-sm btn-danger" id="log-clear-btn">
-                            🗑️ Clear
-                        </button>
-                    </div>
-                </div>
-
-                <div class="log-stats">
-                    <div class="log-stat">
-                        <span class="log-stat-label">Total:</span>
-                        <span class="log-stat-value" id="log-total">0</span>
-                    </div>
-                    <div class="log-stat">
-                        <span class="log-stat-label">Filtered:</span>
-                        <span class="log-stat-value" id="log-filtered">0</span>
-                    </div>
-                    <div class="log-stat">
-                        <span class="log-stat-label">Status:</span>
-                        <span class="log-stat-value" id="log-status">
-                            <span class="status-indicator status-disconnected"></span> Disconnected
-                        </span>
-                    </div>
-                </div>
-
-                <div class="log-container" id="log-container">
-                    <div class="log-virtual-scroll" id="log-virtual-scroll">
-                        <div class="log-placeholder">
-                            <div class="log-placeholder-icon">📋</div>
-                            <div class="log-placeholder-text">Waiting for logs...</div>
-                            <div class="log-placeholder-hint">Logs will appear here once connected</div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

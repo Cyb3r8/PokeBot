@@ -1003,10 +1003,7 @@ class BotControlPanel {
         
         // Initialize restart manager
         this.restartManager = new RestartManager(this);
-        
-        // Initialize log viewer
-        this.logViewer = new LogViewer(this);
-        
+
         // Initialize remote control
         this.remoteControl = new RemoteControl(this);
     }
@@ -1136,7 +1133,6 @@ class BotControlPanel {
             'close-update-modal',
             'cancel-update',
             'close-actions-modal',
-            'close-log-viewer',
             'close-remote-control'
         ];
 
@@ -1196,9 +1192,7 @@ class BotControlPanel {
      * @param {string} action - Action name
      */
     handleInstanceAction(port, action) {
-        if (action === 'logs') {
-            this.logViewer.open(parseInt(port));
-        } else if (action === 'remote') {
+        if (action === 'remote') {
             this.remoteControl.open(parseInt(port));
         } else {
             this.commandManager.sendToInstance(parseInt(port), action);
@@ -2298,256 +2292,6 @@ class RestartManager {
 }
 
 // ============================================================================
-// LOG VIEWER MODULE
-// ============================================================================
-
-/**
- * Live log viewer with filtering and search
- * @class
- */
-class LogViewer {
-    constructor(app) {
-        this.app = app;
-        this.refreshInterval = null;
-        this.currentPort = null;
-        this.autoScroll = true;
-        this.filters = {
-            search: '',
-            level: '',
-            source: ''
-        };
-        this.setupEventHandlers();
-    }
-
-    /**
-     * Setup event handlers
-     */
-    setupEventHandlers() {
-        document.getElementById('log-search')?.addEventListener('keyup', (e) => this.handleSearch(e));
-        document.getElementById('log-instance-filter')?.addEventListener('change', () => this.applyFilters());
-        document.getElementById('log-level-filter')?.addEventListener('change', () => this.applyFilters());
-        document.getElementById('log-pause-btn')?.addEventListener('click', () => this.togglePause());
-        document.getElementById('log-clear-btn')?.addEventListener('click', () => this.clearLogs());
-        document.getElementById('log-autoscroll')?.addEventListener('change', () => this.toggleAutoScroll());
-    }
-
-    /**
-     * Open log viewer for instance
-     * @param {number} port - Instance port
-     */
-    open(port) {
-        this.currentPort = port;
-        
-        const modal = document.getElementById('log-viewer-modal');
-        if (!modal) return;
-
-        const modalHeader = modal.querySelector('.modal-header h2');
-        if (modalHeader) {
-            modalHeader.textContent = `📋 Live Log Viewer - Instance Port ${port}`;
-        }
-
-        // Reset filters
-        this.filters = { search: '', level: '', source: '' };
-        document.getElementById('log-search').value = '';
-        document.getElementById('log-instance-filter').value = '';
-        document.getElementById('log-level-filter').value = '';
-
-        modal.style.display = '';
-        modal.classList.add('show');
-
-        this.refreshLogs();
-        this.refreshInterval = setInterval(() => this.refreshLogs(), 2000);
-    }
-
-    /**
-     * Refresh logs from server
-     */
-    async refreshLogs() {
-        try {
-            const params = new URLSearchParams({
-                port: this.currentPort,
-                ...this.filters
-            });
-
-            const response = await this.app.api.get(`/api/logs?${params}`);
-            this.displayLogs(response.logs);
-        } catch (error) {
-            console.error('Failed to fetch logs:', error);
-        }
-    }
-
-    /**
-     * Display logs in viewer
-     * @param {Array} logs - Log entries
-     */
-    displayLogs(logs) {
-        const container = document.getElementById('log-virtual-scroll');
-        if (!container) return;
-
-        if (!logs || logs.length === 0) {
-            container.innerHTML = '<div class="log-placeholder">📋 No logs found</div>';
-            return;
-        }
-
-        const wasAtBottom = this.isScrolledToBottom();
-        
-        const html = logs.map(log => {
-            const levelClass = this.getLevelClass(log.level);
-            const timestamp = new Date(log.timestamp).toLocaleTimeString();
-            const levelText = log.level.toUpperCase().padEnd(5);
-
-            return `
-                <div class="log-entry ${levelClass}">
-                    <span class="log-time">${timestamp}</span>
-                    <span class="log-level">[${levelText}]</span>
-                    <span class="log-identity">${this.escapeHtml(log.identity)}</span>
-                    <span class="log-message">${this.escapeHtml(log.message)}</span>
-                </div>
-            `;
-        }).join('');
-
-        container.innerHTML = html;
-
-        if (this.autoScroll && wasAtBottom) {
-            this.scrollToBottom();
-        }
-
-        // Update counts
-        document.getElementById('log-total').textContent = logs.length.toString();
-        document.getElementById('log-filtered').textContent = logs.length.toString();
-    }
-
-    /**
-     * Get CSS class for log level
-     * @param {string} level - Log level
-     * @returns {string} CSS class
-     */
-    getLevelClass(level) {
-        const classMap = {
-            'error': 'log-error',
-            'warn': 'log-warn',
-            'warning': 'log-warn',
-            'info': 'log-info'
-        };
-        return classMap[level.toLowerCase()] || '';
-    }
-
-    /**
-     * Check if scrolled to bottom
-     * @returns {boolean} True if at bottom
-     */
-    isScrolledToBottom() {
-        const container = document.getElementById('log-container');
-        if (!container) return false;
-        return container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
-    }
-
-    /**
-     * Scroll to bottom
-     */
-    scrollToBottom() {
-        const container = document.getElementById('log-container');
-        if (container) {
-            requestAnimationFrame(() => {
-                container.scrollTop = container.scrollHeight;
-            });
-        }
-    }
-
-    /**
-     * Toggle auto-scroll
-     */
-    toggleAutoScroll() {
-        const checkbox = document.getElementById('log-autoscroll');
-        if (checkbox) {
-            this.autoScroll = checkbox.checked;
-            if (this.autoScroll) {
-                this.scrollToBottom();
-            }
-        }
-    }
-
-    /**
-     * Toggle pause
-     */
-    togglePause() {
-        const btn = document.getElementById('log-pause-btn');
-        if (!btn) return;
-
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-            this.refreshInterval = null;
-            btn.textContent = '▶️ Resume';
-            btn.classList.add('paused');
-        } else {
-            this.refreshLogs();
-            this.refreshInterval = setInterval(() => this.refreshLogs(), 2000);
-            btn.textContent = '⏸️ Pause';
-            btn.classList.remove('paused');
-        }
-    }
-
-    /**
-     * Handle search
-     * @param {Event} event - Keyboard event
-     */
-    handleSearch(event) {
-        if (event.key === 'Enter' || event.type === 'keyup') {
-            this.filters.search = event.target.value;
-            this.refreshLogs();
-        }
-    }
-
-    /**
-     * Apply filters
-     */
-    applyFilters() {
-        this.filters.source = document.getElementById('log-instance-filter').value;
-        this.filters.level = document.getElementById('log-level-filter').value;
-        this.refreshLogs();
-    }
-
-    /**
-     * Clear logs
-     */
-    clearLogs() {
-        const container = document.getElementById('log-virtual-scroll');
-        if (container) {
-            container.innerHTML = '<div class="log-placeholder">🗑️ Logs cleared</div>';
-        }
-    }
-
-    /**
-     * Close log viewer
-     */
-    close() {
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-            this.refreshInterval = null;
-        }
-
-        const modal = document.getElementById('log-viewer-modal');
-        if (modal) {
-            modal.classList.remove('show');
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 300);
-        }
-    }
-
-    /**
-     * Escape HTML
-     * @param {string} text - Text to escape
-     * @returns {string} Escaped text
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-}
-
-// ============================================================================
 // REMOTE CONTROL MODULE
 // ============================================================================
 
@@ -3062,7 +2806,6 @@ if (typeof module !== 'undefined' && module.exports) {
         CommandManager,
         UpdateManager,
         RestartManager,
-        LogViewer,
         RemoteControl
     };
 }

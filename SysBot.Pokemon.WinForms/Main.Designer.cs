@@ -30,11 +30,6 @@ namespace SysBot.Pokemon.WinForms
                 trayIcon.Visible = false;
                 trayIcon.Dispose();
             }
-            if (disposing && animationTimer != null)
-            {
-                animationTimer.Stop();
-                animationTimer.Dispose();
-            }
             base.Dispose(disposing);
         }
 
@@ -44,12 +39,6 @@ namespace SysBot.Pokemon.WinForms
         {
             this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Main));
-
-            // Initialize animation timer for logo
-            animationTimer = new System.Windows.Forms.Timer();
-            animationTimer.Interval = 30; // 30ms for smooth animation (~33 FPS)
-            animationTimer.Tick += AnimationTimer_Tick;
-            animationTimer.Start();
 
             trayIcon = new NotifyIcon(this.components);
             trayContextMenu = new ContextMenuStrip(this.components);
@@ -1006,6 +995,9 @@ namespace SysBot.Pokemon.WinForms
         {
             panel.Paint += (s, e) => {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+                panel.Region?.Dispose();
+
                 using var path = new GraphicsPath();
                 var rect = panel.ClientRectangle;
                 rect.Inflate(-1, -1);
@@ -1031,6 +1023,8 @@ namespace SysBot.Pokemon.WinForms
 
         private void CreateCircularRegion(Control control)
         {
+            control.Region?.Dispose();
+
             using var path = new GraphicsPath();
             path.AddEllipse(0, 0, control.Width, control.Height);
             control.Region = new Region(path);
@@ -1193,109 +1187,10 @@ namespace SysBot.Pokemon.WinForms
                 e.Graphics.DrawLine(pen, 0, rect.Height - 1, rect.Width, rect.Height - 1);
             }
 
-            // Calculate bot states
-            _runningBotCount = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsRunning ?? false);
-            _idlingBotCount = FLP_Bots.Controls.OfType<BotController>().Count(c => c.GetBot()?.IsPaused ?? false);
-            _totalBotCount = FLP_Bots.Controls.OfType<BotController>().Count();
-
-            float activityLevel = _totalBotCount > 0 ? (float)_runningBotCount / _totalBotCount : 0f;
-            float idleLevel = _totalBotCount > 0 ? (float)_idlingBotCount / _totalBotCount : 0f;
-
-            // Draw gears behind text
-            DrawGears(e.Graphics, rect, activityLevel, idleLevel);
-
-            // Draw electric arcs for active bots
-            if (activityLevel > 0)
-            {
-                UpdateAndDrawElectricArcs(e.Graphics, rect, activityLevel);
-            }
-
-            // Draw main logo text with metallic effect
-            DrawMetallicText(e.Graphics, rect, activityLevel, idleLevel);
-        }
-
-        private void UpdateAndDrawElectricArcs(Graphics g, Rectangle rect, float activityLevel)
-        {
-            // Spawn new arcs occasionally
-            if (_random.NextDouble() < activityLevel * 0.05)
-            {
-                var start = new PointF(rect.Width / 2 + _random.Next(-30, 30), rect.Height / 2);
-                var end = new PointF(
-                    _random.Next(10, rect.Width - 10),
-                    _random.Next(10, rect.Height - 10)
-                );
-
-                var arc = new ElectricArc
-                {
-                    Start = start,
-                    End = end,
-                    Intensity = activityLevel,
-                    Life = 0.5f
-                };
-
-                // Generate arc points
-                int segments = 8;
-                for (int i = 0; i <= segments; i++)
-                {
-                    float t = i / (float)segments;
-                    float x = start.X + (end.X - start.X) * t;
-                    float y = start.Y + (end.Y - start.Y) * t;
-
-                    if (i > 0 && i < segments)
-                    {
-                        x += (float)(_random.NextDouble() * 10 - 5) * activityLevel;
-                        y += (float)(_random.NextDouble() * 10 - 5) * activityLevel;
-                    }
-
-                    arc.Points.Add(new PointF(x, y));
-                }
-
-                _electricArcs.Add(arc);
-            }
-
-            // Update and draw arcs
-            for (int i = _electricArcs.Count - 1; i >= 0; i--)
-            {
-                var arc = _electricArcs[i];
-                arc.Life -= 0.05f;
-
-                if (arc.Life <= 0)
-                {
-                    _electricArcs.RemoveAt(i);
-                    continue;
-                }
-
-                int alpha = (int)(arc.Life * 255);
-                using (var pen = new Pen(Color.FromArgb(alpha, 57, 255, 221), 2))
-                {
-                    pen.EndCap = LineCap.Round;
-                    pen.StartCap = LineCap.Round;
-
-                    for (int j = 0; j < arc.Points.Count - 1; j++)
-                    {
-                        g.DrawLine(pen, arc.Points[j], arc.Points[j + 1]);
-                    }
-                }
-
-                // Draw glow
-                using (var glowPen = new Pen(Color.FromArgb(alpha / 3, 57, 255, 221), 6))
-                {
-                    glowPen.EndCap = LineCap.Round;
-                    glowPen.StartCap = LineCap.Round;
-
-                    for (int j = 0; j < arc.Points.Count - 1; j++)
-                    {
-                        g.DrawLine(glowPen, arc.Points[j], arc.Points[j + 1]);
-                    }
-                }
-            }
-        }
-
-        private void DrawMetallicText(Graphics g, Rectangle rect, float activityLevel, float idleLevel)
-        {
+            // Draw static logo text
             using var font = ScaleFont(new Font("Segoe UI", 14F, FontStyle.Bold));
             var text = "POKÉBOT";
-            var textSize = g.MeasureString(text, font);
+            var textSize = e.Graphics.MeasureString(text, font);
             var x = (rect.Width - textSize.Width) / 2;
             var y = (rect.Height - textSize.Height) / 2;
 
@@ -1312,244 +1207,11 @@ namespace SysBot.Pokemon.WinForms
                 // Shadow
                 using (var shadowBrush = new SolidBrush(Color.FromArgb(80, 0, 0, 0)))
                 {
-                    g.DrawString(text, font, shadowBrush, x + 2, y + 2);
+                    e.Graphics.DrawString(text, font, shadowBrush, x + 2, y + 2);
                 }
 
                 // Main text
-                g.DrawString(text, font, metalBrush, x, y);
-
-                // Different glow effects based on state
-                if (activityLevel > 0)
-                {
-                    // Yellow glow for active
-                    float pulseValue = (float)(Math.Sin(DateTime.Now.Millisecond / 500.0 * Math.PI) + 1) / 2;
-                    int glowAlpha = (int)(30 + pulseValue * 50 + activityLevel * 50);
-                    using (var glowBrush = new SolidBrush(Color.FromArgb(glowAlpha, 255, 255, 0)))
-                    {
-                        g.DrawString(text, font, glowBrush, x - 1, y - 1);
-                    }
-                }
-                else if (idleLevel > 0)
-                {
-                    // Orange breathing glow for idle
-                    float breathe = (float)(Math.Sin(DateTime.Now.Millisecond / 1000.0 * Math.PI) + 1) / 2;
-                    int glowAlpha = (int)(40 + breathe * 60 * idleLevel);
-                    using (var glowBrush = new SolidBrush(Color.FromArgb(glowAlpha, 255, 165, 0)))
-                    {
-                        g.DrawString(text, font, glowBrush, x - 1, y - 1);
-                    }
-                }
-                else
-                {
-                    // Subtle pulse when no bots
-                    float pulseValue = (float)(Math.Sin(DateTime.Now.Millisecond / 1500.0 * Math.PI) + 1) / 2;
-                    int glowAlpha = (int)(20 + pulseValue * 30);
-                    using (var glowBrush = new SolidBrush(Color.FromArgb(glowAlpha, 102, 192, 244)))
-                    {
-                        g.DrawString(text, font, glowBrush, x - 1, y - 1);
-                    }
-                }
-            }
-        }
-
-        private void DrawGears(Graphics g, Rectangle rect, float activityLevel, float idleLevel)
-        {
-            var centerX = rect.Width / 2;
-            var centerY = rect.Height / 2;
-
-            // Calculate gear positions for proper meshing
-            float gear1Radius = 20;
-            float gear2Radius = 12;
-            int gear1Teeth = 16;
-            int gear2Teeth = 10;
-
-            // Position gears so they mesh properly
-            float gearDistance = gear1Radius + gear2Radius - 2; // Slight overlap for meshing
-            float gear1X = centerX - 10;
-            float gear1Y = centerY;
-            float gear2X = gear1X + gearDistance;
-            float gear2Y = gear1Y;
-
-            // Draw shadow first
-            DrawGearShadow(g, gear1X + 2, gear1Y + 2, gear1Radius, 0.2f);
-            DrawGearShadow(g, gear2X + 2, gear2Y + 2, gear2Radius, 0.2f);
-
-            // Large gear (behind, left)
-            DrawSingleGear(g, gear1X, gear1Y, gear1Radius, gear1Teeth, _gearRotation1, 0.4f, true);
-
-            // Small gear (behind, right) - rotation adjusted for proper meshing
-            float meshOffset = 360f / gear2Teeth / 2; // Half tooth offset for proper meshing
-            DrawSingleGear(g, gear2X, gear2Y, gear2Radius, gear2Teeth, _gearRotation2 + meshOffset, 0.4f, false);
-        }
-
-        private void DrawGearShadow(Graphics g, float centerX, float centerY, float radius, float opacity)
-        {
-            using (var shadowBrush = new SolidBrush(Color.FromArgb((int)(255 * opacity), 0, 0, 0)))
-            {
-                g.FillEllipse(shadowBrush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-            }
-        }
-
-        private void DrawSingleGear(Graphics g, float centerX, float centerY, float outerRadius, int teethCount, float rotation, float opacity, bool isLargeGear)
-        {
-            // 3D color scheme
-            var baseColor = Color.FromArgb((int)(255 * opacity), 70, 75, 85);
-            var darkColor = Color.FromArgb((int)(255 * opacity), 40, 45, 55);
-            var lightColor = Color.FromArgb((int)(255 * opacity), 90, 95, 105);
-            var highlightColor = Color.FromArgb((int)(255 * opacity), 110, 115, 125);
-
-            using (var gearPath = new GraphicsPath())
-            {
-                // Create gear teeth with better proportions
-                float toothDepth = outerRadius * 0.25f;
-                float innerRadius = outerRadius - toothDepth;
-                float angleStep = 360f / teethCount;
-                float toothAngle = angleStep * 0.4f; // Wider teeth for better mesh
-
-                // Create the gear outline
-                List<PointF> gearPoints = new List<PointF>();
-
-                for (int i = 0; i < teethCount; i++)
-                {
-                    float angle = i * angleStep + rotation;
-
-                    // Calculate tooth points with beveled edges
-                    float toothStart = angle - toothAngle / 2;
-                    float toothEnd = angle + toothAngle / 2;
-                    float valleyStart = angle + toothAngle / 2 + angleStep * 0.1f;
-                    float valleyEnd = angle + angleStep - toothAngle / 2 - angleStep * 0.1f;
-
-                    // Tooth tip (with slight bevel)
-                    gearPoints.Add(PolarToCartesian(centerX, centerY, outerRadius, toothStart));
-                    gearPoints.Add(PolarToCartesian(centerX, centerY, outerRadius, angle - toothAngle * 0.1f));
-                    gearPoints.Add(PolarToCartesian(centerX, centerY, outerRadius, angle + toothAngle * 0.1f));
-                    gearPoints.Add(PolarToCartesian(centerX, centerY, outerRadius, toothEnd));
-
-                    // Valley
-                    gearPoints.Add(PolarToCartesian(centerX, centerY, innerRadius, valleyStart));
-                    gearPoints.Add(PolarToCartesian(centerX, centerY, innerRadius, valleyEnd));
-                }
-
-                gearPath.AddPolygon(gearPoints.ToArray());
-
-                // Create 3D effect with gradients
-                var bounds = new RectangleF(centerX - outerRadius, centerY - outerRadius, outerRadius * 2, outerRadius * 2);
-
-                // Base gradient for 3D depth
-                using (var gradientBrush = new LinearGradientBrush(bounds, lightColor, darkColor, 45f))
-                {
-                    gradientBrush.SetBlendTriangularShape(0.5f, 1.0f);
-                    g.FillPath(gradientBrush, gearPath);
-                }
-
-                // Draw beveled edges on teeth
-                for (int i = 0; i < teethCount; i++)
-                {
-                    float angle = i * angleStep + rotation;
-                    DrawToothBevel(g, centerX, centerY, outerRadius, innerRadius, angle, toothAngle, angleStep, lightColor, darkColor);
-                }
-
-                // Inner hub with 3D effect
-                float hubRadius = innerRadius * 0.6f;
-                var hubBounds = new RectangleF(centerX - hubRadius, centerY - hubRadius, hubRadius * 2, hubRadius * 2);
-
-                using (var hubPath = new GraphicsPath())
-                {
-                    hubPath.AddEllipse(hubBounds);
-                    using (var hubGradient = new PathGradientBrush(hubPath))
-                    {
-                        hubGradient.CenterColor = lightColor;
-                        hubGradient.SurroundColors = new[] { darkColor };
-                        hubGradient.FocusScales = new PointF(0.3f, 0.3f);
-                        g.FillPath(hubGradient, hubPath);
-                    }
-                }
-
-                // Raised rim around hub
-                float rimRadius = hubRadius * 1.1f;
-                using (var rimPen = new Pen(lightColor, 1.5f))
-                {
-                    g.DrawEllipse(rimPen, centerX - rimRadius, centerY - rimRadius, rimRadius * 2, rimRadius * 2);
-                }
-
-                // Center hole with depth
-                float holeRadius = hubRadius * 0.3f;
-                var holeBounds = new RectangleF(centerX - holeRadius, centerY - holeRadius, holeRadius * 2, holeRadius * 2);
-
-                using (var holePath = new GraphicsPath())
-                {
-                    holePath.AddEllipse(holeBounds);
-                    using (var holeGradient = new PathGradientBrush(holePath))
-                    {
-                        holeGradient.CenterColor = Color.FromArgb((int)(255 * opacity), 10, 15, 25);
-                        holeGradient.SurroundColors = new[] { Color.FromArgb((int)(255 * opacity), 20, 25, 35) };
-                        g.FillPath(holeGradient, holePath);
-                    }
-                }
-
-                // Specular highlight for metallic look
-                using (var highlightPath = new GraphicsPath())
-                {
-                    var highlightBounds = new RectangleF(centerX - outerRadius * 0.7f, centerY - outerRadius * 0.7f, outerRadius * 1.4f, outerRadius * 1.4f);
-                    highlightPath.AddArc(highlightBounds, -60 + rotation * 0.3f, 120);
-
-                    using (var highlightBrush = new LinearGradientBrush(
-                        highlightBounds,
-                        Color.FromArgb((int)(80 * opacity), 150, 155, 165),
-                        Color.Transparent,
-                        -30f + rotation * 0.3f))
-                    {
-                        g.FillPath(highlightBrush, highlightPath);
-                    }
-                }
-            }
-        }
-
-        private PointF PolarToCartesian(float centerX, float centerY, float radius, float angleDegrees)
-        {
-            float angleRadians = angleDegrees * (float)Math.PI / 180f;
-            return new PointF(
-                centerX + radius * (float)Math.Cos(angleRadians),
-                centerY + radius * (float)Math.Sin(angleRadians)
-            );
-        }
-
-        private void DrawToothBevel(Graphics g, float centerX, float centerY, float outerRadius, float innerRadius, float angle, float toothAngle, float angleStep, Color lightColor, Color darkColor)
-        {
-            // Draw highlights on the leading edge of each tooth
-            using (var bevelPath = new GraphicsPath())
-            {
-                float toothStart = angle - toothAngle / 2;
-                float toothMid = angle;
-
-                var p1 = PolarToCartesian(centerX, centerY, outerRadius, toothStart);
-                var p2 = PolarToCartesian(centerX, centerY, outerRadius, toothMid);
-                var p3 = PolarToCartesian(centerX, centerY, innerRadius * 1.1f, toothStart);
-
-                bevelPath.AddPolygon(new[] { p1, p2, p3 });
-
-                using (var bevelBrush = new SolidBrush(Color.FromArgb(40, lightColor)))
-                {
-                    g.FillPath(bevelBrush, bevelPath);
-                }
-            }
-
-            // Draw shadow on trailing edge
-            using (var shadowPath = new GraphicsPath())
-            {
-                float toothEnd = angle + toothAngle / 2;
-                float toothMid = angle;
-
-                var p1 = PolarToCartesian(centerX, centerY, outerRadius, toothMid);
-                var p2 = PolarToCartesian(centerX, centerY, outerRadius, toothEnd);
-                var p3 = PolarToCartesian(centerX, centerY, innerRadius * 1.1f, toothEnd);
-
-                shadowPath.AddPolygon(new[] { p1, p2, p3 });
-
-                using (var shadowBrush = new SolidBrush(Color.FromArgb(40, darkColor)))
-                {
-                    g.FillPath(shadowBrush, shadowPath);
-                }
+                e.Graphics.DrawString(text, font, metalBrush, x, y);
             }
         }
 
@@ -1704,93 +1366,6 @@ namespace SysBot.Pokemon.WinForms
             }
         }
 
-        private void AnimateGears()
-        {
-            // Ensure logoPanel exists
-            if (logoPanel == null || logoPanel.IsDisposed)
-                return;
-                
-            // Update gear rotations with proper gear ratio
-            float baseSpeed = 0.5f; // Slow speed when stopped
-            float activeSpeed = 3.0f; // Fast speed when running
-
-            float activityLevel = _totalBotCount > 0 ? (float)_runningBotCount / _totalBotCount : 0f;
-            float rotationSpeed = baseSpeed + (activeSpeed - baseSpeed) * activityLevel;
-
-            // Gear ratio based on teeth count (16:10 = 1.6:1)
-            float gearRatio = 16f / 10f;
-
-            _gearRotation1 += rotationSpeed;
-            _gearRotation2 -= rotationSpeed * gearRatio; // Smaller gear rotates faster
-
-            if (_gearRotation1 > 360) _gearRotation1 -= 360;
-            if (_gearRotation2 < -360) _gearRotation2 += 360;
-
-            // ALWAYS redraw logo panel to show continuous animations
-            logoPanel.Invalidate();
-        }
-        
-        private void AnimationTimer_Tick(object sender, EventArgs e)
-        {
-            // Update logo animations
-            AnimateGears();
-            
-            // Handle button hover animations
-            foreach (Control control in GetAllControls(this))
-            {
-                if (control.Tag is ButtonAnimationState animState)
-                {
-                    var oldProgress = animState.HoverProgress;
-                    var elapsed = (DateTime.Now - animState.AnimationStart).TotalMilliseconds;
-                    var duration = 150.0;
-
-                    if (animState.IsHovering)
-                    {
-                        animState.HoverProgress = Math.Min(1.0, elapsed / duration);
-                    }
-                    else
-                    {
-                        animState.HoverProgress = Math.Max(0.0, 1.0 - (elapsed / duration));
-                    }
-
-                    if (Math.Abs(animState.HoverProgress - oldProgress) > 0.01)
-                    {
-                        control.Invalidate();
-                    }
-                }
-
-                if (control.Tag is EnhancedButtonAnimationState enhancedState)
-                {
-                    var oldProgress = enhancedState.HoverProgress;
-                    var elapsed = (DateTime.Now - enhancedState.AnimationStart).TotalMilliseconds;
-                    var duration = 200.0;
-
-                    if (enhancedState.IsHovering)
-                    {
-                        enhancedState.HoverProgress = Math.Min(1.0f, (float)(elapsed / duration));
-                    }
-                    else
-                    {
-                        enhancedState.HoverProgress = Math.Max(0.0f, 1.0f - (float)(elapsed / duration));
-                    }
-
-                    enhancedState.PulsePhase += 0.08f;
-                    if (enhancedState.PulsePhase > Math.PI * 2)
-                        enhancedState.PulsePhase -= (float)(Math.PI * 2);
-
-                    enhancedState.PulseIntensity = (float)((Math.Sin(enhancedState.PulsePhase) + 1) / 2);
-
-                    if (Math.Abs(enhancedState.HoverProgress - oldProgress) > 0.01 || enhancedState.IsActive)
-                    {
-                        control.Invalidate();
-                    }
-                }
-            }
-
-            // Update status indicator pulse
-            UpdateStatusIndicatorPulse();
-        }
-
         private void TransitionPanels(int index)
         {
             // Ensure proper panel layout before transitioning
@@ -1833,12 +1408,6 @@ namespace SysBot.Pokemon.WinForms
             contentPanel.ResumeLayout(true);
             contentPanel.PerformLayout();
             contentPanel.Refresh();
-        }
-
-        private IEnumerable<Control> GetAllControls(Control container)
-        {
-            var controls = container.Controls.Cast<Control>();
-            return controls.SelectMany(ctrl => GetAllControls(ctrl)).Concat(controls);
         }
 
         #endregion
@@ -2020,24 +1589,7 @@ namespace SysBot.Pokemon.WinForms
         private TabPage Tab_Logs;
         private Panel ButtonPanel => controlButtonsPanel;
 
-        private int _idlingBotCount = 0;
-        private readonly List<ElectricArc> _electricArcs = new List<ElectricArc>();
-        private readonly Random _random = new Random();
-        private int _runningBotCount = 0;
-        private int _totalBotCount = 0;
-        private float _gearRotation1 = 0f;
-        private float _gearRotation2 = 0f;
-        private System.Windows.Forms.Timer animationTimer;
         #endregion
-    }
-
-    public class ElectricArc
-    {
-        public PointF Start { get; set; }
-        public PointF End { get; set; }
-        public float Intensity { get; set; }
-        public float Life { get; set; }
-        public List<PointF> Points { get; set; } = new List<PointF>();
     }
 
     public static class GraphicsExtensions

@@ -1621,6 +1621,11 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
         var tidsid = BitConverter.ToUInt32(data, 0);
         var cln = toSend.Clone();
 
+        // Store the original language to check if user explicitly set it
+        int userLanguage = toSend.Language;
+        int configLanguage = (int)hub.Config.Legality.GenerateLanguage;
+        bool userSetLanguage = userLanguage != configLanguage;
+
         if (isMysteryGift)
         {
             Log("Mystery Gift detected. Only applying OT info, preserving language.");
@@ -1636,7 +1641,13 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
             cln.OriginalTrainerGender = data[6];
             cln.TrainerTID7 = tidsid % 1_000_000;
             cln.TrainerSID7 = tidsid / 1_000_000;
-            cln.Language = data[5];
+
+            // Only override language if user didn't explicitly set one
+            if (!userSetLanguage)
+            {
+                cln.Language = data[5];
+            }
+
             cln.OriginalTrainerName = trainerName;
         }
 

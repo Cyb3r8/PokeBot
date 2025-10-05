@@ -229,6 +229,11 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
 
         var cln = toSend.Clone();
 
+        // Store the original language to check if user explicitly set it
+        int userLanguage = toSend.Language;
+        int configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
+        bool userSetLanguage = userLanguage != configLanguage;
+
         if (isMysteryGift)
         {
             Log("Mystery Gift detected. Only applying OT info, preserving language.");
@@ -242,7 +247,13 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
             cln.OriginalTrainerGender = (byte)tradePartner.Gender;
             cln.TrainerTID7 = (uint)Math.Abs(tradePartner.DisplayTID);
             cln.TrainerSID7 = (uint)Math.Abs(tradePartner.DisplaySID);
-            cln.Language = tradePartner.Language;
+
+            // Only override language if user didn't explicitly set one
+            if (!userSetLanguage)
+            {
+                cln.Language = tradePartner.Language;
+            }
+
             cln.OriginalTrainerName = tradePartner.OT;
         }
 

@@ -269,7 +269,8 @@ public static class Helpers<T> where T : PKM, new()
 
         pk.Language = finalLanguage;
 
-        if (!set.Nickname.Equals(pk.Nickname) && string.IsNullOrEmpty(set.Nickname))
+        // Always clear nickname when no explicit nickname is set, to get the correct language name
+        if (string.IsNullOrEmpty(set.Nickname))
             pk.ClearNickname();
 
         pk.ResetPartyStats();

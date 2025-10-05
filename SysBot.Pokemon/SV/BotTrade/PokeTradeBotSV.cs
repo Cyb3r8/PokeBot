@@ -234,13 +234,22 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
         int configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
         bool userSetLanguage = userLanguage != configLanguage;
 
+        // Get language-appropriate OT name if user set a specific language
+        string otName = tradePartner.OT;
+        if (userSetLanguage)
+        {
+            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.SV, 9, lang: (LanguageID)userLanguage);
+            otName = langTrainerInfo.OT;
+            Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
+        }
+
         if (isMysteryGift)
         {
             Log("Mystery Gift detected. Only applying OT info, preserving language.");
             cln.OriginalTrainerGender = (byte)tradePartner.Gender;
             cln.TrainerTID7 = (uint)Math.Abs(tradePartner.DisplayTID);
             cln.TrainerSID7 = (uint)Math.Abs(tradePartner.DisplaySID);
-            cln.OriginalTrainerName = tradePartner.OT;
+            cln.OriginalTrainerName = otName;
         }
         else
         {
@@ -254,7 +263,7 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
                 cln.Language = tradePartner.Language;
             }
 
-            cln.OriginalTrainerName = tradePartner.OT;
+            cln.OriginalTrainerName = otName;
         }
 
         ClearOTTrash(cln, tradePartner);

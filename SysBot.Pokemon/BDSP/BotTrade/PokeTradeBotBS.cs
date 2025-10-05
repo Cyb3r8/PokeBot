@@ -253,20 +253,34 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
 
         var cln = toSend.Clone();
 
+        // Store the original language to check if user explicitly set it
+        int userLanguage = toSend.Language;
+        int configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
+        bool userSetLanguage = userLanguage != configLanguage;
+
+        // Get language-appropriate OT name if user set a specific language
+        string otName = tradePartner;
+        if (userSetLanguage)
+        {
+            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.BDSP, 8, lang: (LanguageID)userLanguage);
+            otName = langTrainerInfo.OT;
+            Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
+        }
+
         if (isMysteryGift)
         {
             Log("Mystery Gift detected. Only applying OT info, preserving language.");
             // Only set OT-related info for Mystery Gifts without preset OT/TID/SID
             cln.TrainerTID7 = trainerTID7;
             cln.TrainerSID7 = trainerSID7;
-            cln.OriginalTrainerName = tradePartner;
+            cln.OriginalTrainerName = otName;
         }
         else
         {
             // Apply all trade partner details for non-Mystery Gift Pokémon
             cln.TrainerTID7 = trainerTID7;
             cln.TrainerSID7 = trainerSID7;
-            cln.OriginalTrainerName = tradePartner;
+            cln.OriginalTrainerName = otName;
             cln.OriginalTrainerGender = trainerGender;
         }
 

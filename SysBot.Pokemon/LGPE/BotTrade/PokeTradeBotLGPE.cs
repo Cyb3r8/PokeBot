@@ -805,16 +805,28 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
         if (tradeDetails != null)
         {
             var cln = toSend.Clone();
+
+            // Check if user explicitly set a language
+            int userLanguage = toSend.Language;
+            int configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
+            bool userSetLanguage = userLanguage != configLanguage;
+
+            // Get language-appropriate OT name if user set a specific language
+            string otName = tradeDetails.OT ?? string.Empty;
+            if (userSetLanguage)
+            {
+                var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.GE, 7, lang: (LanguageID)userLanguage);
+                otName = langTrainerInfo.OT;
+                Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
+            }
+
 #pragma warning disable CS8601 // Possible null reference assignment.
-            cln.OriginalTrainerName = tradeDetails.OT;
+            cln.OriginalTrainerName = otName;
 #pragma warning restore CS8601 // Possible null reference assignment.
             cln.SetDisplayTID((uint)tradeDetails.TID);
             cln.SetDisplaySID((uint)tradeDetails.SID);
 
             // Only override language if user didn't explicitly set one
-            int userLanguage = toSend.Language;
-            int configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
-            bool userSetLanguage = userLanguage != configLanguage;
             if (!userSetLanguage)
             {
                 cln.Language = (int)LanguageID.English; // Set the appropriate language ID

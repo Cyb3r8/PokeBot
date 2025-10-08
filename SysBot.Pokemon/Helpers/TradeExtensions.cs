@@ -236,8 +236,7 @@ public abstract class TradeExtensions<T> where T : PKM, new()
             pk.EncryptionConstant = pk.PID ^ 0x80000000;
         }
 
-        // Clear markings and ribbons
-        MarkingApplicator.SetMarkings(pk);
+        // Clear ribbons (markings removed)
         RibbonApplicator.RemoveAllValidRibbons(pk);
 
         // Handle game-specific properties

@@ -202,7 +202,8 @@ public abstract class PokeRoutineExecutor9SV : PokeRoutineExecutor<PK9>
             pkm.RefreshChecksum();
         }
 
-        pkm.ResetPartyStats();
+        // Heal Pokemon without setting markings
+        pkm.Heal();
         return SwitchConnection.WriteBytesAbsoluteAsync(pkm.EncryptedBoxData, offset, token);
     }
 

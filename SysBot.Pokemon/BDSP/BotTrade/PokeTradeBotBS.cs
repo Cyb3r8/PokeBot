@@ -727,7 +727,8 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
 
         var la = new LegalityAnalysis(clone);
         clone = (PB8)TradeExtensions<PB8>.TrashBytes(clone, la);
-        clone.ResetPartyStats();
+        // Heal Pokemon without setting markings
+        clone.Heal();
 
         la = new LegalityAnalysis(clone);
         if (!la.Valid)

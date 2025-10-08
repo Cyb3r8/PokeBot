@@ -352,7 +352,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
             return;
         }
 
-        pk.ResetPartyStats();
+        // Heal Pokemon without setting markings
+        pk.Heal();
 
         // Ad Name Check
         if (Info.Hub.Config.Trade.TradeConfiguration.EnableSpamCheck)
@@ -439,7 +440,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
             return;
         }
 
-        pk.ResetPartyStats();
+        // Heal Pokemon without setting markings
+        pk.Heal();
         var sig = Context.User.GetFavor();
         await QueueHelper<T>.AddToQueueAsync(Context, code, Context.User.Username, sig, pk,
             PokeRoutineType.LinkTrade, PokeTradeType.Specific).ConfigureAwait(false);

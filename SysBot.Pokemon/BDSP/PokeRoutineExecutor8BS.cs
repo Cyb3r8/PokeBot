@@ -180,7 +180,8 @@ public abstract class PokeRoutineExecutor8BS : PokeRoutineExecutor<PB8>
             pkm.RefreshChecksum();
         }
 
-        pkm.ResetPartyStats();
+        // Heal Pokemon without setting markings
+        pkm.Heal();
         return SwitchConnection.WriteBytesAbsoluteAsync(pkm.EncryptedPartyData, offset, token);
     }
 

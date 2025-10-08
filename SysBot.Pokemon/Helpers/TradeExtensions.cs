@@ -222,7 +222,6 @@ public abstract class TradeExtensions<T> where T : PKM, new()
         // Clear trainer data
         pk.CurrentHandler = 0;
         pk.HandlingTrainerName = "";
-        ClearHandlingTrainerTrash(pk);
         pk.HandlingTrainerFriendship = 0;
         pk.ClearMemories();
 
@@ -257,7 +256,6 @@ public abstract class TradeExtensions<T> where T : PKM, new()
             pb8.HandlingTrainerMemoryFeeling = 0;
             pb8.HandlingTrainerMemoryIntensity = 0;
             pb8.DynamaxLevel = 0;
-            ClearNicknameTrash(pk);
         }
         else if (pk is PK9 pk9)
         {
@@ -308,62 +306,6 @@ public abstract class TradeExtensions<T> where T : PKM, new()
             form = (byte)(formString.Length - 1);
 
         return formString[form].Contains('-') ? formString[form] : formString[form] == "" ? "" : $"-{formString[form]}";
-    }
-
-    private static void ClearNicknameTrash(PKM pokemon)
-    {
-        switch (pokemon)
-        {
-            case PK9 pk9:
-                ClearTrash(pk9.NicknameTrash, pk9.Nickname);
-                break;
-            case PA8 pa8:
-                ClearTrash(pa8.NicknameTrash, pa8.Nickname);
-                break;
-            case PB8 pb8:
-                ClearTrash(pb8.NicknameTrash, pb8.Nickname);
-                break;
-            case PB7 pb7:
-                ClearTrash(pb7.NicknameTrash, pb7.Nickname);
-                break;
-            case PK8 pk8:
-                ClearTrash(pk8.NicknameTrash, pk8.Nickname);
-                break;
-        }
-    }
-
-    private static void ClearTrash(Span<byte> trash, string name)
-    {
-        trash.Clear();
-        int maxLength = trash.Length / 2;
-        int actualLength = Math.Min(name.Length, maxLength);
-        for (int i = 0; i < actualLength; i++)
-        {
-            char value = name[i];
-            trash[i * 2] = (byte)value;
-            trash[(i * 2) + 1] = (byte)(value >> 8);
-        }
-        if (actualLength < maxLength)
-        {
-            trash[actualLength * 2] = 0x00;
-            trash[(actualLength * 2) + 1] = 0x00;
-        }
-    }
-
-    private static void ClearHandlingTrainerTrash(PKM pk)
-    {
-        switch (pk)
-        {
-            case PK8 pk8:
-                ClearTrash(pk8.HandlingTrainerTrash, "");
-                break;
-            case PB8 pb8:
-                ClearTrash(pb8.HandlingTrainerTrash, "");
-                break;
-            case PK9 pk9:
-                ClearTrash(pk9.HandlingTrainerTrash, "");
-                break;
-        }
     }
 
     public static bool HasAdName(T pk, out string ad)

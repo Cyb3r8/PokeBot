@@ -1528,8 +1528,9 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
 
         var la = new LegalityAnalysis(clone);
         clone = (PK8)TradeExtensions<PK8>.TrashBytes(clone, la);
-        // Heal Pokemon without setting markings
-        clone.Heal();
+        // Heal without setting markings
+        clone.HealPP();
+        clone.SetSuggestedHyperTrainingData();
 
         la = new LegalityAnalysis(clone);
         if (!la.Valid)

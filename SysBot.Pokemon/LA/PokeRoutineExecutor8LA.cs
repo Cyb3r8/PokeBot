@@ -163,8 +163,9 @@ public abstract class PokeRoutineExecutor8LA : PokeRoutineExecutor<PA8>
             pkm.RefreshChecksum();
         }
 
-        // Heal Pokemon without setting markings
-        pkm.Heal();
+        // Heal without setting markings
+        pkm.HealPP();
+        pkm.SetSuggestedHyperTrainingData();
         return SwitchConnection.WriteBytesAbsoluteAsync(pkm.EncryptedBoxData, offset, token);
     }
 

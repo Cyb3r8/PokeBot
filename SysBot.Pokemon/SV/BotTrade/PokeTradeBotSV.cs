@@ -707,8 +707,9 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
 
         var la = new LegalityAnalysis(clone);
         clone = (PK9)TradeExtensions<PK9>.TrashBytes(clone, la);
-        // Heal Pokemon without setting markings
-        clone.Heal();
+        // Heal without setting markings
+        clone.HealPP();
+        clone.SetSuggestedHyperTrainingData();
 
         la = new LegalityAnalysis(clone);
         if (!la.Valid)

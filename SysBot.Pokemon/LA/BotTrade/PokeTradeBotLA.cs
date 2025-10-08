@@ -1242,8 +1242,9 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
         var la = new LegalityAnalysis(clone);
         clone = (PA8)TradeExtensions<PA8>.TrashBytes(clone, la);
-        // Heal Pokemon without setting markings
-        clone.Heal();
+        // Heal without setting markings
+        clone.HealPP();
+        clone.SetSuggestedHyperTrainingData();
 
         la = new LegalityAnalysis(clone);
         if (!la.Valid)

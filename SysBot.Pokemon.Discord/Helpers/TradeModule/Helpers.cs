@@ -268,8 +268,9 @@ public static class Helpers<T> where T : PKM, new()
         if (string.IsNullOrEmpty(set.Nickname))
             pk.ClearNickname();
 
-        // Reset party stats (heal) without setting markings
-        pk.Heal();
+        // Heal without setting markings
+        pk.HealPP();
+        pk.SetSuggestedHyperTrainingData();
     }
 
     public static string GetFailureReason(string result, string speciesName)

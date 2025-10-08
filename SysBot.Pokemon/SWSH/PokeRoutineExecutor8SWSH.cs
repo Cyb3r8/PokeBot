@@ -237,8 +237,9 @@ public abstract class PokeRoutineExecutor8SWSH(PokeBotState Config) : PokeRoutin
             pkm.RefreshChecksum();
         }
         var ofs = GetBoxSlotOffset(box, slot);
-        // Heal Pokemon without setting markings
-        pkm.Heal();
+        // Heal without setting markings
+        pkm.HealPP();
+        pkm.SetSuggestedHyperTrainingData();
         return Connection.WriteBytesAsync(pkm.EncryptedPartyData, ofs, token);
     }
 

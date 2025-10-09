@@ -92,7 +92,7 @@ public class DiscordSettings
     [Category(Channels), Description("Channels with these IDs are the only channels where the bot acknowledges commands.")]
     public RemoteControlAccessList ChannelWhitelist { get; set; } = new();
 
-    [Category(Startup), Description("Bot command prefix.")]
+    [Category(Startup), Description("Bot command prefix. Can be a single character or multiple prefixes separated by commas (e.g., \"$\" or \"$,!,%,.,§,&,/\").")]
     public string CommandPrefix { get; set; } = "$";
 
     [Category(Operation), Description("Bot can reply with a ShowdownSet in Any channel the bot can see, instead of only channels the bot has been whitelisted to run in. Only make this true if you want the bot to serve more utility in non-bot channels.")]

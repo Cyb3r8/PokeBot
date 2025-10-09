@@ -509,24 +509,53 @@ public sealed class SysCord<T> where T : PKM, new()
                 return;
             }
 
-            var correctPrefix = SysCordSettings.Settings.CommandPrefix;
+            var prefixConfig = SysCordSettings.Settings.CommandPrefix;
             var content = msg.Content;
             var argPos = 0;
 
-            if (msg.HasMentionPrefix(_client.CurrentUser, ref argPos) || msg.HasStringPrefix(correctPrefix, ref argPos))
+            // Parse multiple prefixes (comma-separated)
+            var validPrefixes = prefixConfig.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => !string.IsNullOrEmpty(p))
+                .ToArray();
+
+            // Default to "$" if no valid prefixes are configured
+            if (validPrefixes.Length == 0)
+                validPrefixes = new[] { "$" };
+
+            // Check if message has mention prefix or any of the valid string prefixes
+            bool hasPrefixMatch = msg.HasMentionPrefix(_client.CurrentUser, ref argPos);
+            if (!hasPrefixMatch)
+            {
+                foreach (var prefix in validPrefixes)
+                {
+                    argPos = 0;
+                    if (msg.HasStringPrefix(prefix, ref argPos))
+                    {
+                        hasPrefixMatch = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hasPrefixMatch)
             {
                 var context = new SocketCommandContext(_client, msg);
                 var handled = await TryHandleCommandAsync(msg, context, argPos);
                 if (handled)
                     return;
             }
-            else if (content.Length > 1 && content[0] != correctPrefix[0])
+            else if (content.Length > 1)
             {
-                var potentialPrefix = content[0].ToString();
+                // Check if user used an incorrect prefix
+                var usedPrefix = content[0].ToString();
                 var command = content.Split(' ')[0][1..];
-                if (_validCommands.Contains(command))
+
+                // Only show error if it's a valid command but wrong prefix
+                if (_validCommands.Contains(command) && !validPrefixes.Any(p => p == usedPrefix))
                 {
-                    await SafeSendMessageAsync(msg.Channel, $"Incorrect prefix! The correct command is **{correctPrefix}{command}**").ConfigureAwait(false);
+                    var examplePrefix = validPrefixes[0]; // Use first prefix as example
+                    await SafeSendMessageAsync(msg.Channel, $"Incorrect prefix! Valid prefixes: {string.Join(", ", validPrefixes.Select(p => $"**{p}**"))}. Example: **{examplePrefix}{command}**").ConfigureAwait(false);
                     return;
                 }
             }

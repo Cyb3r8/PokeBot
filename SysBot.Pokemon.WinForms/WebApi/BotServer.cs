@@ -109,7 +109,11 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
         try
         {
-            _listener = new HttpListener();
+            _listener = new HttpListener
+            {
+                AuthenticationSchemes = AuthenticationSchemes.Anonymous,
+                IgnoreWriteExceptions = true
+            };
 
             // Check if external connections are allowed
             var config = GetConfig();
@@ -171,8 +175,9 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             else
             {
                 // Localhost only mode - IPv4 only to avoid connection reset issues
-                _listener.Prefixes.Add($"http://localhost:{_port}/");
+                _listener.Prefixes.Clear();
                 _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+                _listener.Prefixes.Add($"http://localhost:{_port}/");
 
                 _listener.Start();
                 LogUtil.LogInfo($"Web server listening on localhost only at port {_port} (AllowExternalConnections=false)", "WebServer");
@@ -216,47 +221,17 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
     private void Listen()
     {
-        while (_running && _listener != null)
+        while (_running && _listener != null && _listener.IsListening)
         {
+            HttpListenerContext? context = null;
             try
             {
-                var asyncResult = _listener.BeginGetContext(null, null);
-
-                while (_running && !asyncResult.AsyncWaitHandle.WaitOne(100))
-                {
-                }
-
-                if (!_running)
-                    break;
-
-                var context = _listener.EndGetContext(asyncResult);
-
-                ThreadPool.QueueUserWorkItem(async _ =>
-                {
-                    try
-                    {
-                        await HandleRequest(context);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogUtil.LogError($"Error handling request: {ex.Message}", "WebServer");
-                    }
-                });
+                context = _listener.GetContext(); // Synchronous, blocking call - more stable than BeginGetContext
             }
             catch (HttpListenerException ex) when (!_running || ex.ErrorCode == 995)
             {
+                // Operation cancelled or service stopped
                 break;
-            }
-            catch (HttpListenerException ex) when (ex.ErrorCode == 87 || ex.ErrorCode == 50)
-            {
-                // Error 87: The parameter is incorrect (IPv6/IPv4 mismatch)
-                // Error 50: The request is not supported (IPv6 request on IPv4-only listener)
-                // These are non-fatal, just continue listening
-                LogUtil.LogError($"HttpListener Error {ex.ErrorCode}: {ex.Message} - Request dropped", "WebServer");
-                if (_running)
-                {
-                    System.Threading.Thread.Sleep(100); // Brief pause to avoid tight loop
-                }
             }
             catch (ObjectDisposedException) when (!_running)
             {
@@ -266,9 +241,31 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             {
                 if (_running)
                 {
-                    LogUtil.LogError($"Error in listener: {ex.Message}", "WebServer");
+                    LogUtil.LogError($"Error accepting context: {ex.Message}", "WebServer");
                 }
+                continue;
             }
+
+            // Handle request asynchronously on thread pool
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await HandleRequest(context);
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        await TrySendErrorResponseAsync(context.Response, 500, "Internal Server Error");
+                    }
+                    catch
+                    {
+                        // Client disconnected or response already closed
+                    }
+                    LogUtil.LogError($"Error handling request: {ex.Message}", "WebServer");
+                }
+            });
         }
     }
 

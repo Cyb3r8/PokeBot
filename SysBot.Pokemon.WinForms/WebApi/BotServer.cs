@@ -171,6 +171,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             else
             {
                 // Localhost only mode - IPv4 only to avoid connection reset issues
+                _listener.Prefixes.Add($"http://localhost:{_port}/");
                 _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
 
                 _listener.Start();
@@ -251,6 +252,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 // Error 87: The parameter is incorrect (IPv6/IPv4 mismatch)
                 // Error 50: The request is not supported (IPv6 request on IPv4-only listener)
                 // These are non-fatal, just continue listening
+                LogUtil.LogError($"HttpListener Error {ex.ErrorCode}: {ex.Message} - Request dropped", "WebServer");
                 if (_running)
                 {
                     System.Threading.Thread.Sleep(100); // Brief pause to avoid tight loop
@@ -276,7 +278,6 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         try
         {
             var request = context.Request;
-            LogUtil.LogInfo($"Received request: {request.HttpMethod} {request.Url?.LocalPath}", "WebServer");
 
             SetCorsHeaders(request, response);
 
@@ -288,7 +289,6 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
 
             var (statusCode, content, contentType) = await ProcessRequestAsync(request);
-            LogUtil.LogInfo($"Response: {statusCode} {contentType}", "WebServer");
             
             if ((contentType == "image/x-icon" || contentType == "image/png") && content is byte[] imageBytes)
             {

@@ -111,19 +111,58 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         {
             _listener = new HttpListener();
 
-            try
+            // Check if external connections are allowed
+            var config = GetConfig();
+            var allowExternal = config?.Hub?.WebServer?.AllowExternalConnections ?? false;
+
+            if (allowExternal)
             {
-                _listener.Prefixes.Add($"http://+:{_port}/");
-                _listener.Start();
-                LogUtil.LogInfo($"Web server listening on all interfaces at port {_port}", "WebServer");
+                try
+                {
+                    _listener.Prefixes.Add($"http://+:{_port}/");
+                    _listener.Start();
+                    LogUtil.LogInfo($"Web server listening on all interfaces at port {_port}", "WebServer");
+                }
+                catch (HttpListenerException ex) when (ex.ErrorCode == 5)
+                {
+                    LogUtil.LogError($"Failed to bind to all interfaces. Access denied (Error 5).", "WebServer");
+                    LogUtil.LogError($"URL reservation exists but insufficient permissions.", "WebServer");
+                    LogUtil.LogInfo("Verify with: netsh http show urlacl url=http://+:{_port}/", "WebServer");
+
+                    _listener = new HttpListener();
+                    _listener.Prefixes.Add($"http://localhost:{_port}/");
+                    _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+
+                    // Add IPv6 localhost support to prevent "request not supported" errors
+                    try
+                    {
+                        _listener.Prefixes.Add($"http://[::1]:{_port}/");
+                    }
+                    catch
+                    {
+                        // IPv6 might not be available, continue without it
+                    }
+
+                    _listener.Start();
+
+                    LogUtil.LogError($"Web server requires administrator privileges for network access. Currently limited to localhost only.", "WebServer");
+                    LogUtil.LogInfo("To enable network access, either:", "WebServer");
+                    LogUtil.LogInfo("1. Run this application as Administrator", "WebServer");
+                    LogUtil.LogInfo($"2. Or run this command as admin: netsh http add urlacl url=http://+:{_port}/ user=Everyone", "WebServer");
+                }
+                catch (Exception ex)
+                {
+                    LogUtil.LogError($"Unexpected error binding to all interfaces: {ex.Message}", "WebServer");
+                    throw;
+                }
             }
-            catch (HttpListenerException ex) when (ex.ErrorCode == 5)
+            else
             {
-                _listener = new HttpListener();
+                // Localhost only mode
                 _listener.Prefixes.Add($"http://localhost:{_port}/");
                 _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
 
-                // Add IPv6 localhost support to prevent "request not supported" errors
+                // Add IPv6 localhost support
                 try
                 {
                     _listener.Prefixes.Add($"http://[::1]:{_port}/");
@@ -134,11 +173,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 }
 
                 _listener.Start();
-
-                LogUtil.LogError($"Web server requires administrator privileges for network access. Currently limited to localhost only.", "WebServer");
-                LogUtil.LogInfo("To enable network access, either:", "WebServer");
-                LogUtil.LogInfo("1. Run this application as Administrator", "WebServer");
-                LogUtil.LogInfo($"2. Or run this command as admin: netsh http add urlacl url=http://+:{_port}/ user=Everyone", "WebServer");
+                LogUtil.LogInfo($"Web server listening on localhost only at port {_port} (AllowExternalConnections=false)", "WebServer");
             }
 
             _running = true;

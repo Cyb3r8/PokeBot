@@ -286,6 +286,8 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         try
         {
             var request = context.Request;
+            LogUtil.LogInfo($"Received request: {request.HttpMethod} {request.Url?.LocalPath}", "WebServer");
+
             SetCorsHeaders(request, response);
 
             if (request.HttpMethod == "OPTIONS")
@@ -296,6 +298,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
 
             var (statusCode, content, contentType) = await ProcessRequestAsync(request);
+            LogUtil.LogInfo($"Response: {statusCode} {contentType}", "WebServer");
             
             if ((contentType == "image/x-icon" || contentType == "image/png") && content is byte[] imageBytes)
             {

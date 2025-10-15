@@ -122,6 +122,17 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 _listener = new HttpListener();
                 _listener.Prefixes.Add($"http://localhost:{_port}/");
                 _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+
+                // Add IPv6 localhost support to prevent "request not supported" errors
+                try
+                {
+                    _listener.Prefixes.Add($"http://[::1]:{_port}/");
+                }
+                catch
+                {
+                    // IPv6 might not be available, continue without it
+                }
+
                 _listener.Start();
 
                 LogUtil.LogError($"Web server requires administrator privileges for network access. Currently limited to localhost only.", "WebServer");
@@ -198,6 +209,16 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             catch (HttpListenerException ex) when (!_running || ex.ErrorCode == 995)
             {
                 break;
+            }
+            catch (HttpListenerException ex) when (ex.ErrorCode == 87 || ex.ErrorCode == 50)
+            {
+                // Error 87: The parameter is incorrect (IPv6/IPv4 mismatch)
+                // Error 50: The request is not supported (IPv6 request on IPv4-only listener)
+                // These are non-fatal, just continue listening
+                if (_running)
+                {
+                    System.Threading.Thread.Sleep(100); // Brief pause to avoid tight loop
+                }
             }
             catch (ObjectDisposedException) when (!_running)
             {

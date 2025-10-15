@@ -170,19 +170,8 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             }
             else
             {
-                // Localhost only mode
-                _listener.Prefixes.Add($"http://localhost:{_port}/");
+                // Localhost only mode - IPv4 only to avoid connection reset issues
                 _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
-
-                // Add IPv6 localhost support
-                try
-                {
-                    _listener.Prefixes.Add($"http://[::1]:{_port}/");
-                }
-                catch
-                {
-                    // IPv6 might not be available, continue without it
-                }
 
                 _listener.Start();
                 LogUtil.LogInfo($"Web server listening on localhost only at port {_port} (AllowExternalConnections=false)", "WebServer");

@@ -119,8 +119,9 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             {
                 try
                 {
-                    _listener.Prefixes.Add($"http://+:{_port}/");
-                    LogUtil.LogInfo($"Attempting to bind to http://+:{_port}/ (AllowExternalConnections=true)", "WebServer");
+                    // Try explicit IP binding instead of wildcard
+                    _listener.Prefixes.Add($"http://*:{_port}/");
+                    LogUtil.LogInfo($"Attempting to bind to http://*:{_port}/ (AllowExternalConnections=true)", "WebServer");
                     LogUtil.LogInfo($"Current process ID: {Environment.ProcessId}", "WebServer");
 
                     _listener.Start();

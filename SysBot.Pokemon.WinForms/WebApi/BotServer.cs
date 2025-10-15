@@ -180,7 +180,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 _listener.Prefixes.Add($"http://localhost:{_port}/");
 
                 _listener.Start();
+
+                // Debug: Log registered prefixes
                 LogUtil.LogInfo($"Web server listening on localhost only at port {_port} (AllowExternalConnections=false)", "WebServer");
+                LogUtil.LogInfo($"Registered prefixes: {string.Join(", ", _listener.Prefixes)}", "WebServer");
             }
 
             _running = true;
@@ -233,6 +236,12 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 // Operation cancelled or service stopped
                 break;
             }
+            catch (HttpListenerException ex) when (ex.ErrorCode == 50)
+            {
+                // Error 50: Request not supported (IPv6 on IPv4-only listener)
+                // Silently ignore - this happens when browser sends IPv6 requests
+                continue;
+            }
             catch (ObjectDisposedException) when (!_running)
             {
                 break;
@@ -241,8 +250,20 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             {
                 if (_running)
                 {
-                    LogUtil.LogError($"Error accepting context: {ex.Message}", "WebServer");
+                    LogUtil.LogError($"Error accepting context: {ex.GetType().Name} - {ex.Message} (ErrorCode: {(ex is HttpListenerException hle ? hle.ErrorCode.ToString() : "N/A")})", "WebServer");
                 }
+                continue;
+            }
+
+            // Filter out IPv6 requests if they somehow got through
+            if (context.Request.RemoteEndPoint?.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {
+                try
+                {
+                    context.Response.StatusCode = 400;
+                    context.Response.Close();
+                }
+                catch { }
                 continue;
             }
 

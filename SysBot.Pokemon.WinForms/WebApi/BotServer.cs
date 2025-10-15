@@ -120,8 +120,19 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 try
                 {
                     _listener.Prefixes.Add($"http://+:{_port}/");
+                    LogUtil.LogInfo($"Attempting to bind to http://+:{_port}/ (AllowExternalConnections=true)", "WebServer");
+                    LogUtil.LogInfo($"Current process ID: {Environment.ProcessId}", "WebServer");
+
                     _listener.Start();
+
+                    // Verify the actual prefixes that were registered
+                    LogUtil.LogInfo($"HttpListener.Start() succeeded. Registered prefixes:", "WebServer");
+                    foreach (var prefix in _listener.Prefixes)
+                    {
+                        LogUtil.LogInfo($"  - {prefix}", "WebServer");
+                    }
                     LogUtil.LogInfo($"Web server listening on all interfaces at port {_port}", "WebServer");
+                    LogUtil.LogInfo($"Verify with: netstat -ano | findstr :{_port}", "WebServer");
                 }
                 catch (HttpListenerException ex) when (ex.ErrorCode == 5)
                 {

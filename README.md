@@ -29,10 +29,6 @@ Control all of your bots with a simple to use control panel via `http://localhos
 Control your switches right from the control center.  Simply open up the Remote Control window, select the IP of the switch you wish to control, and start clicking away on the remotes!
 <img width="1405" height="1151" alt="image" src="https://github.com/user-attachments/assets/d92647c4-e177-4e19-97b2-34cfd26bb77e" />
 
- ## Log Viewer
-View logs right from the control center!  Search for errors, users, and more!
-<img width="1410" height="1160" alt="image" src="https://github.com/user-attachments/assets/aaf823a9-6709-49e8-8a82-52f6865cbf49" />
-
   ## Realtime feedback
  Control all of your programs with the click of a button!  Idle all, stop all, start all, turn on/off all your switch screens at once!
 <img width="1037" height="640" alt="image" src="https://github.com/user-attachments/assets/42dd0998-a759-4739-b2c7-ba96d65124a9" />
@@ -73,7 +69,7 @@ netsh advfirewall firewall add rule name="PokeBot Web" dir=in action=allow proto
 
 ![image](https://github.com/user-attachments/assets/820d8892-ae52-4aa6-981a-cb57d1c32690)
 
-- Tray Support - When you press X to close out of the program, it goes to the system tray.  Right click the PokeBot icon in the tray to exit or control the bot.
+- Tray Support - When you click "Send To Tray, it goes to the system tray.  Right click the PokeBot icon in the tray to exit or control the bot.
 
 ![image](https://github.com/user-attachments/assets/3a30b334-955c-4fb3-b7d8-60cd005a2e18)
 

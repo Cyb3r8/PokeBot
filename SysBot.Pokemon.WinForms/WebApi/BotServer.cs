@@ -119,9 +119,28 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             {
                 try
                 {
-                    // Try explicit IP binding instead of wildcard
-                    _listener.Prefixes.Add($"http://*:{_port}/");
-                    LogUtil.LogInfo($"Attempting to bind to http://*:{_port}/ (AllowExternalConnections=true)", "WebServer");
+                    // Windows http.sys workaround: bind to specific IP addresses
+                    // Get all non-loopback IPv4 addresses
+                    var localAddresses = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                        .Where(i => i.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
+                        .SelectMany(i => i.GetIPProperties().UnicastAddresses)
+                        .Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                                 && !System.Net.IPAddress.IsLoopback(a.Address))
+                        .Select(a => a.Address.ToString())
+                        .ToList();
+
+                    // Also add localhost
+                    _listener.Prefixes.Add($"http://localhost:{_port}/");
+                    _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+
+                    // Add each network IP
+                    foreach (var ip in localAddresses)
+                    {
+                        _listener.Prefixes.Add($"http://{ip}:{_port}/");
+                        LogUtil.LogInfo($"Adding binding for: http://{ip}:{_port}/", "WebServer");
+                    }
+
+                    LogUtil.LogInfo($"Attempting to bind to {localAddresses.Count + 2} addresses (AllowExternalConnections=true)", "WebServer");
                     LogUtil.LogInfo($"Current process ID: {Environment.ProcessId}", "WebServer");
 
                     _listener.Start();
@@ -132,7 +151,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                     {
                         LogUtil.LogInfo($"  - {prefix}", "WebServer");
                     }
-                    LogUtil.LogInfo($"Web server listening on all interfaces at port {_port}", "WebServer");
+                    LogUtil.LogInfo($"Web server listening on all configured interfaces at port {_port}", "WebServer");
                     LogUtil.LogInfo($"Verify with: netstat -ano | findstr :{_port}", "WebServer");
                 }
                 catch (HttpListenerException ex) when (ex.ErrorCode == 5)

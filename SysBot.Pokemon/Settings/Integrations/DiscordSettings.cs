@@ -129,34 +129,34 @@ public class DiscordSettings
     public bool ReturnPKMs { get; set; } = true;
 
     [Category(Roles), Description("Users with this role are allowed to enter the Clone queue.")]
-    public RemoteControlAccessList RoleCanClone { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanClone { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to enter the Dump queue.")]
-    public RemoteControlAccessList RoleCanDump { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanDump { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to enter the FixOT queue.")]
-    public RemoteControlAccessList RoleCanFixOT { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanFixOT { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to enter the Seed Check/Special Request queue.")]
-    public RemoteControlAccessList RoleCanSeedCheckorSpecialRequest { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanSeedCheckorSpecialRequest { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to enter the Trade queue.")]
-    public RemoteControlAccessList RoleCanTrade { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanTrade { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to use AutoOT functionality.")]
     public RemoteControlAccessList RoleCanAutoOT { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to use the Egg command.")]
-    public RemoteControlAccessList RoleCanEgg { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanEgg { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to use the BatchTrade command.")]
-    public RemoteControlAccessList RoleCanBatchTrade { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanBatchTrade { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to use the MysteryEgg command.")]
-    public RemoteControlAccessList RoleCanMysteryEgg { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanMysteryEgg { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to use Batch Commands in their Showdown sets.")]
-    public RemoteControlAccessList RoleCanUseBatchCommands { get; set; } = new() { AllowIfEmpty = true };
+    public RemoteControlAccessList RoleCanUseBatchCommands { get; set; } = new() { AllowIfEmpty = false };
 
     [Category(Roles), Description("Users with this role are allowed to override trainer data (OT, TID, SID, Gender) in their Showdown sets.")]
     public RemoteControlAccessList RoleCanOverrideTrainerData { get; set; } = new() { AllowIfEmpty = true };

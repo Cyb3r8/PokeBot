@@ -14,6 +14,7 @@ public sealed class BotFactory8SWSH : BotFactory<PK8>
             or PokeRoutineType.Dump
             or PokeRoutineType.FixOT
             or PokeRoutineType.SeedCheck
+            or PokeRoutineType.Batch
             => new PokeTradeBotSWSH(Hub, cfg),
 
         PokeRoutineType.RaidBot => new RaidBotSWSH(cfg, Hub),
@@ -36,6 +37,7 @@ public sealed class BotFactory8SWSH : BotFactory<PK8>
             or PokeRoutineType.Dump
             or PokeRoutineType.SeedCheck
             or PokeRoutineType.FixOT
+            or PokeRoutineType.Batch
             => true,
 
         PokeRoutineType.RaidBot => true,

@@ -29,9 +29,10 @@ namespace SysBot.Pokemon.Discord.Helpers
             // Skip commands
             int argPos = 0;
             if (umsg.HasCharPrefix('.', ref argPos) || umsg.HasCharPrefix('%', ref argPos) || umsg.HasCharPrefix('$', ref argPos) || umsg.HasMentionPrefix(_client.CurrentUser, ref argPos))
+                return;
 
-                // Build the base forward message
-                string forwardContent = $"📩 **DM from {umsg.Author} ({umsg.Author.Id})**:\n{umsg.Content}";
+            // Build the base forward message
+            string forwardContent = $"📩 **DM from {umsg.Author} ({umsg.Author.Id})**:\n{umsg.Content}";
 
             // Include attachments in the log if they exist
             if (umsg.Attachments.Count > 0)

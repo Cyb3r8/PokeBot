@@ -20,7 +20,8 @@ public sealed class TradePartnerPLZA(TradeMyStatusPLZA Info)
 }
 
 // Trade session structure from trade partner (48 bytes)
-// 0x00: ID32, 0x04: Gender, 0x05: Language, 0x08: OT Name
+// Based on PKHeX MyStatus9a structure:
+// 0x00: ID32 (TID+SID), 0x04: Game, 0x05: Gender, 0x07: Language, 0x10: OT Name
 public sealed class TradeMyStatusPLZA
 {
     public readonly byte[] Data = new byte[0x30];
@@ -29,11 +30,11 @@ public sealed class TradeMyStatusPLZA
 
     public uint DisplayTID => BinaryPrimitives.ReadUInt32LittleEndian(Data.AsSpan(0)) % 1_000_000;
 
-    public int Game => 52; // PLZA game version
+    public int Game => Data[0x04]; // Read from memory instead of hardcoding
 
-    public int Gender => Data[4];
+    public int Gender => Data[0x05];
 
-    public int Language => Data[5];
+    public int Language => Data[0x07];
 
-    public string OT => StringConverter8.GetString(Data.AsSpan(0x08, 0x1A));
+    public string OT => StringConverter8.GetString(Data.AsSpan(0x10, 0x1A));
 }

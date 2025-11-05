@@ -227,8 +227,10 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         if (data.Contains("ping") || data.Contains("pong") || 
             data.Contains("privmsg") || data.Contains("usernotice") ||
             data.Contains("roomstate") || data.Contains("userstate"))
+        {
             return;
-            
+        }
+
         // Only log important events like errors or connection status
         if (data.Contains("error") || data.Contains("disconnect") || 
             data.Contains("connect") || data.Contains("join") || 
@@ -357,8 +359,80 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
 
     public void StartingDistribution(string message)
     {
-        if (isConnected && client?.IsConnected == true)
-            SendMessage(message);
+        Task.Run(async () =>
+        {
+            if (isConnected && client?.IsConnected == true)
+            {
+                SendMessage("5...");
+                await Task.Delay(1_000).ConfigureAwait(false);
+                SendMessage("4...");
+                await Task.Delay(1_000).ConfigureAwait(false);
+                SendMessage("3...");
+                await Task.Delay(1_000).ConfigureAwait(false);
+                SendMessage("2...");
+                await Task.Delay(1_000).ConfigureAwait(false);
+                SendMessage("1...");
+                await Task.Delay(1_000).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(message))
+                    SendMessage(message);
+            }
+        });
+    }
+
+    private static int GenerateUniqueTradeID()
+    {
+        long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        int randomValue = new Random().Next(1000);
+        return ((int)(timestamp % int.MaxValue) * 1000) + randomValue;
+    }
+
+    private bool AddToTradeQueue(T pk, int code, OnWhisperReceivedArgs e, RequestSignificance sig, PokeRoutineType type, out string msg)
+    {
+        var userID = ulong.Parse(e.WhisperMessage.UserId);
+        var name = e.WhisperMessage.DisplayName;
+
+        var trainer = new PokeTradeTrainerInfo(name, ulong.Parse(e.WhisperMessage.UserId));
+        var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, e.WhisperMessage.Username, client, Settings.Channel, Hub.Config.Twitch);
+
+        // PLZA command-level block: prevent queuing if item is on PLZA blacklist
+        if (NonTradableItemsPLZA.IsPLZAMode(Hub) && NonTradableItemsPLZA.IsBlocked(pk))
+        {
+            var itemName = pk.HeldItem > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[pk.HeldItem] : "(none)";
+            msg = $"@{name}: Trade blocked — the held item '{itemName}' cannot be traded in PLZA.";
+            return false;
+        }
+
+        var tt = type == PokeRoutineType.SeedCheck ? PokeTradeType.Seed : PokeTradeType.Specific;
+        var detail = new PokeTradeDetail<T>(pk, trainer, notifier, tt, code, sig == RequestSignificance.Favored);
+        var uniqueTradeID = GenerateUniqueTradeID();
+        var trade = new TradeEntry<T>(detail, userID, type, name, uniqueTradeID);
+
+        var added = Info.AddToTradeQueue(trade, userID, sig == RequestSignificance.Owner);
+
+        if (added == QueueResultAdd.AlreadyInQueue)
+        {
+            msg = $"@{name}: Sorry, you are already in the queue.";
+            return false;
+        }
+
+        if (added == QueueResultAdd.NotAllowedItem)
+        {
+            var held = pk.HeldItem;
+            var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
+            msg = $"@{name}: Trade blocked — the held item '{itemName}' cannot be traded in PLZA.";
+            return false;
+        }
+
+        var position = Info.CheckPosition(userID, uniqueTradeID, type);
+        msg = $"@{name}: Added to the {type} queue, unique ID: {detail.ID}. Current Position: {position.Position}";
+
+        var botct = Info.Hub.Bots.Count;
+        if (position.Position > botct)
+        {
+            var eta = Info.Hub.Config.Queues.EstimateDelay(position.Position, botct);
+            msg += $". Estimated: {eta:F1} minutes.";
+        }
+        return true;
     }
 
     private void ExecuteCommand(string username, string cmd, string channel)

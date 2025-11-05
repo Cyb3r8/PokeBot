@@ -1242,6 +1242,11 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
     private async Task<LinkCodeEntryResult> EnterLinkTradeAndCode(PokeTradeDetail<PA9> poke, int code, CancellationToken token)
     {
+        // Loading code entry
+        if (poke.Type != PokeTradeType.Random)
+        {
+            Hub.Config.Stream.StartEnterCode(this);
+        }
         // Read current code to determine if we need to clear
         var currentCode = await GetCurrentLinkCode(token).ConfigureAwait(false);
 
@@ -1258,11 +1263,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
             await Task.Delay(1_000, token).ConfigureAwait(false);
         }
 
-        // Loading code entry
-        if (poke.Type != PokeTradeType.Random)
-        {
-            Hub.Config.Stream.StartEnterCode(this);
-        }
+
 
         // Enter the new code
         await EnterLinkCode(code, Hub.Config, token).ConfigureAwait(false);

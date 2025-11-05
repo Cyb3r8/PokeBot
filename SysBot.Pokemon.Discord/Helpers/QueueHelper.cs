@@ -117,6 +117,15 @@ public static class QueueHelper<T> where T : PKM, new()
         var notifier = new DiscordTradeNotifier<T>(pk, trainer, code, trader, batchTradeNumber, totalBatchTrades,
             isMysteryEgg, lgcode: lgcode!);
 
+        // PLZA command-level block: prevent queuing if item is on PLZA blacklist
+        if (NonTradableItemsPLZA.IsPLZAMode(SysCord<T>.Runner.Hub) && NonTradableItemsPLZA.IsBlocked(pk))
+        {
+            var held = pk.HeldItem;
+            var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
+            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
+            return new TradeQueueResult(false);
+        }
+
         int uniqueTradeID = GenerateUniqueTradeID();
 
         var detail = new PokeTradeDetail<T>(pk, trainer, notifier, t, code, sig == RequestSignificance.Favored,
@@ -136,7 +145,7 @@ public static class QueueHelper<T> where T : PKM, new()
         var added = Info.AddToTradeQueue(trade, userID, false, isSudo);
 
         // Start queue position updates for Discord notification
-        if (added != QueueResultAdd.AlreadyInQueue && notifier is DiscordTradeNotifier<T> discordNotifier)
+        if (added != QueueResultAdd.AlreadyInQueue && added != QueueResultAdd.NotAllowedItem && notifier is DiscordTradeNotifier<T> discordNotifier)
         {
             // IMPORTANT: Update the notifier's unique trade ID to match the one used in the queue
             // Otherwise the DM will check position with the wrong ID and return incorrect results
@@ -171,6 +180,14 @@ public static class QueueHelper<T> where T : PKM, new()
                 .Build();
 
             await context.Channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
+            return new TradeQueueResult(false);
+        }
+
+        if (added == QueueResultAdd.NotAllowedItem)
+        {
+            var held = pk.HeldItem;
+            var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
+            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
             return new TradeQueueResult(false);
         }
 
@@ -308,6 +325,15 @@ public static class QueueHelper<T> where T : PKM, new()
         var trainer_info = new PokeTradeTrainerInfo(trainer, userID);
         var notifier = new DiscordTradeNotifier<T>(firstTrade, trainer_info, code, trader, 1, totalBatchTrades, false, lgcode: []);
 
+        // PLZA command-level block for batch: block if first trade item is on PLZA blacklist
+        if (NonTradableItemsPLZA.IsPLZAMode(SysCord<T>.Runner.Hub) && NonTradableItemsPLZA.IsBlocked(firstTrade))
+        {
+            var held = firstTrade.HeldItem;
+            var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
+            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
+            return;
+        }
+
         int uniqueTradeID = GenerateUniqueTradeID();
 
         var detail = new PokeTradeDetail<T>(firstTrade, trainer_info, notifier, PokeTradeType.Batch, code,
@@ -332,7 +358,7 @@ public static class QueueHelper<T> where T : PKM, new()
         await EmbedHelper.SendTradeCodeEmbedAsync(trader, code).ConfigureAwait(false);
 
         // Start queue position updates for Discord notification
-        if (added != QueueResultAdd.AlreadyInQueue && notifier is DiscordTradeNotifier<T> discordNotifier)
+        if (added != QueueResultAdd.AlreadyInQueue && added != QueueResultAdd.NotAllowedItem && notifier is DiscordTradeNotifier<T> discordNotifier)
         {
             // IMPORTANT: Update the notifier's unique trade ID to match the one used in the queue
             // Otherwise the DM will check position with the wrong ID and return incorrect results
@@ -359,6 +385,14 @@ public static class QueueHelper<T> where T : PKM, new()
                 .Build();
 
             await context.Channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
+            return;
+        }
+
+        if (added == QueueResultAdd.NotAllowedItem)
+        {
+            var held = firstTrade.HeldItem;
+            var itemName = held > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[held] : "(none)";
+            await context.Channel.SendMessageAsync($"{trader.Mention} - Trade blocked: the held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
             return;
         }
 

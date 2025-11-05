@@ -17,6 +17,170 @@ public class QueueTests
     [Fact]
     public void TestFavortism() => TestFavor<PK8>();
 
+    [Fact]
+    public void TestDuplicateUserWithDifferentUniqueIDs() => TestDuplicateQueueEntries<PK8>();
+
+    [Fact]
+    public void TestConcurrentDuplicateRequests() => TestConcurrentDuplicates<PK8>();
+
+    private static void TestConcurrentDuplicates<T>() where T : PKM, new()
+    {
+        var hub = new PokeTradeHub<T>(new PokeTradeHubConfig());
+        var info = new TradeQueueInfo<T>(hub);
+
+        Console.WriteLine("=== Testing Concurrent Duplicate Queue Entry Bug ===");
+        Console.WriteLine("Simulating the RACE CONDITION from Discord command flow");
+        Console.WriteLine();
+
+        const ulong testUserId = 987654321;
+        const string testUserName = "ConcurrentUser";
+
+        // Simulate what happens in Discord: multiple commands execute in parallel
+        // Command 1 and Command 2 both check IsUserInQueue before either adds to queue
+        Console.WriteLine("Step 1: Both commands check if user is in queue (both see 'false')");
+        bool check1 = !info.IsUserInQueue(testUserId);
+        bool check2 = !info.IsUserInQueue(testUserId);
+        Console.WriteLine($"  Command 1 check: {check1} (proceed)");
+        Console.WriteLine($"  Command 2 check: {check2} (proceed)");
+        check1.Should().BeTrue("First command sees user not in queue");
+        check2.Should().BeTrue("Second command ALSO sees user not in queue (RACE CONDITION!)");
+        Console.WriteLine();
+
+        // Now both commands proceed to add to queue concurrently
+        Console.WriteLine("Step 2: Both commands try to add to queue with different UniqueTradeIDs");
+
+        var trade1 = CreateTradeWithUniqueId<T>(info, testUserId, testUserName, 5001);
+        var trade2 = CreateTradeWithUniqueId<T>(info, testUserId, testUserName, 5002);
+
+        // Simulate concurrent execution using Task.Run (like in ProcessTradeAsync)
+        var task1 = Task.Run(() =>
+        {
+            var result = info.AddToTradeQueue(trade1, testUserId, allowMultiple: false, sudo: false);
+            Console.WriteLine($"  Task 1: UniqueTradeID={trade1.UniqueTradeID}, Result={result}");
+            return result;
+        });
+
+        var task2 = Task.Run(() =>
+        {
+            var result = info.AddToTradeQueue(trade2, testUserId, allowMultiple: false, sudo: false);
+            Console.WriteLine($"  Task 2: UniqueTradeID={trade2.UniqueTradeID}, Result={result}");
+            return result;
+        });
+
+        // Wait for both tasks to complete
+        Task.WaitAll(task1, task2);
+
+        var result1 = task1.Result;
+        var result2 = task2.Result;
+
+        Console.WriteLine();
+        Console.WriteLine($"Final Queue Count: {info.Count}");
+        Console.WriteLine($"Expected: 1 (only first should be added, second should be blocked)");
+        Console.WriteLine();
+
+        // At least one should be Added
+        bool oneAdded = result1 == QueueResultAdd.Added || result2 == QueueResultAdd.Added;
+        oneAdded.Should().BeTrue("At least one command should succeed");
+
+        // At least one should be blocked as AlreadyInQueue
+        bool oneBlocked = result1 == QueueResultAdd.AlreadyInQueue || result2 == QueueResultAdd.AlreadyInQueue;
+        oneBlocked.Should().BeTrue("At least one command should be blocked");
+
+        // THE KEY ASSERTION: Queue should only have 1 entry, not 2!
+        info.Count.Should().Be(1, "User should only be in queue ONCE, even with concurrent requests");
+
+        Console.WriteLine("=== Test Complete ===");
+    }
+
+    private static void TestDuplicateQueueEntries<T>() where T : PKM, new()
+    {
+        var hub = new PokeTradeHub<T>(new PokeTradeHubConfig());
+        var info = new TradeQueueInfo<T>(hub);
+        var queue = info.Hub.Queues.GetQueue(PokeRoutineType.LinkTrade);
+
+        Console.WriteLine("=== Testing Duplicate Queue Entry Bug ===");
+        Console.WriteLine("Simulating same user making multiple trade requests (like in Discord)");
+        Console.WriteLine();
+
+        const ulong testUserId = 123456789;
+        const string testUserName = "TestUser";
+
+        // Simulate first trade request from user (with UniqueTradeID 1001)
+        var trade1 = CreateTradeWithUniqueId<T>(info, testUserId, testUserName, 1001);
+        var result1 = info.AddToTradeQueue(trade1, testUserId, allowMultiple: false, sudo: false);
+
+        Console.WriteLine($"Request 1: UserID={testUserId}, UniqueTradeID={trade1.UniqueTradeID}");
+        Console.WriteLine($"  Result: {result1}");
+        Console.WriteLine($"  Queue Count: {info.Count}");
+        Console.WriteLine($"  Expected: Added");
+        result1.Should().Be(QueueResultAdd.Added, "First request should be added");
+        info.Count.Should().Be(1, "Queue should have 1 entry after first request");
+        Console.WriteLine();
+
+        // Small delay to simulate time between requests
+        Thread.Sleep(50);
+
+        // Simulate second trade request from SAME user (with different UniqueTradeID 2002)
+        // This simulates what happens in Discord when GenerateUniqueTradeID() is called again
+        var trade2 = CreateTradeWithUniqueId<T>(info, testUserId, testUserName, 2002);
+        var result2 = info.AddToTradeQueue(trade2, testUserId, allowMultiple: false, sudo: false);
+
+        Console.WriteLine($"Request 2: UserID={testUserId}, UniqueTradeID={trade2.UniqueTradeID}");
+        Console.WriteLine($"  Result: {result2}");
+        Console.WriteLine($"  Queue Count: {info.Count}");
+        Console.WriteLine($"  Expected: AlreadyInQueue (user should be blocked!)");
+
+        // THIS IS THE BUG - the user should NOT be able to queue again!
+        result2.Should().Be(QueueResultAdd.AlreadyInQueue, "Same user should NOT be allowed to queue multiple times");
+        info.Count.Should().Be(1, "Queue should still have only 1 entry - duplicate should be blocked");
+
+        Console.WriteLine();
+
+        // Third attempt - verify it's still blocked
+        Thread.Sleep(50);
+        var trade3 = CreateTradeWithUniqueId<T>(info, testUserId, testUserName, 3003);
+        var result3 = info.AddToTradeQueue(trade3, testUserId, allowMultiple: false, sudo: false);
+
+        Console.WriteLine($"Request 3: UserID={testUserId}, UniqueTradeID={trade3.UniqueTradeID}");
+        Console.WriteLine($"  Result: {result3}");
+        Console.WriteLine($"  Queue Count: {info.Count}");
+        Console.WriteLine($"  Expected: AlreadyInQueue");
+
+        result3.Should().Be(QueueResultAdd.AlreadyInQueue, "User should still be blocked on third attempt");
+        info.Count.Should().Be(1, "Queue should still have only 1 entry");
+
+        Console.WriteLine();
+        Console.WriteLine("=== Test Complete ===");
+    }
+
+    private static TradeEntry<T> CreateTradeWithUniqueId<T>(TradeQueueInfo<T> info, ulong userId, string userName, int uniqueTradeId) where T : PKM, new()
+    {
+        var trainerInfo = new PokeTradeTrainerInfo(userName, userId);
+        var notifier = new PokeTradeLogNotifier<T>();
+        var detail = new PokeTradeDetail<T>(
+            new T { Species = 25 }, // Pikachu
+            trainerInfo,
+            notifier,
+            PokeTradeType.Specific,
+            1234, // trade code
+            false, // not favored
+            null, // lgcode
+            1, // batch trade number
+            1, // total batch trades
+            false, // not mystery egg
+            uniqueTradeId, // THE UNIQUE ID THAT CHANGES EACH REQUEST
+            false, // ignoreAutoOT
+            false  // setEdited
+        );
+
+        var trade = new TradeEntry<T>(detail, userId, PokeRoutineType.LinkTrade, userName, uniqueTradeId);
+
+        // Set up the OnFinish callback like in production code
+        trade.Trade.Notifier.OnFinish = r => info.Remove(trade);
+
+        return trade;
+    }
+
     private static void EnqueueTest<T>() where T : PKM, new()
     {
         var hub = new PokeTradeHub<T>(new PokeTradeHubConfig());

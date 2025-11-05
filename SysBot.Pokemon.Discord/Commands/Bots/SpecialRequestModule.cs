@@ -410,12 +410,6 @@ namespace SysBot.Pokemon.Discord
                 if (la.Valid) pk = clone;
             }
 
-            // Replace mega stones with Gold Bottle Cap in PLZA (PA9)
-            if (typeof(T) == typeof(PA9) && pk.HeldItem > 0 && TradeExtensions<T>.IsMegaStone(pk.HeldItem))
-            {
-                pk.HeldItem = 796; // Gold Bottle Cap
-            }
-
             await QueueHelper<T>.AddToQueueAsync(Context, code, trainerName, sig, pk, PokeRoutineType.LinkTrade, tradeType, usr, isBatchTrade, batchTradeNumber, totalBatchTrades, isHiddenTrade, isMysteryEgg, lgcode: lgcode, ignoreAutoOT).ConfigureAwait(false);
         }
     }

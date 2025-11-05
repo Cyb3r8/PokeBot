@@ -74,24 +74,6 @@ public abstract class TradeExtensions<T> where T : PKM, new()
     public static readonly ushort[] ShinyLock = [  (ushort)Species.Victini, (ushort)Species.Keldeo, (ushort)Species.Volcanion, (ushort)Species.Cosmog, (ushort)Species.Cosmoem, (ushort)Species.Magearna, (ushort)Species.Marshadow, (ushort)Species.Eternatus,
                                                     (ushort)Species.Kubfu, (ushort)Species.Urshifu, (ushort)Species.Zarude, (ushort)Species.Glastrier, (ushort)Species.Spectrier, (ushort)Species.Calyrex ];
 
-    // PLZA Mega Stone item IDs (from PKHeX ItemStorage9ZA.cs)
-    public static readonly ushort[] MegaStones = [
-        0656, 0657, 0658, 0659, 0660, 0661, 0662, 0663, 0665, 0666,
-        0667, 0668, 0669, 0670, 0671, 0672, 0673, 0674, 0675, 0676,
-        0677, 0678, 0679, 0680, 0681, 0682, 0683, 0754, 0755, 0756,
-        0757, 0758, 0759, 0760, 0761, 0762, 0763, 0764, 0767, 0768,
-        0769, 0770, 2559, 2560, 2561, 2562, 2563, 2564, 2565, 2566,
-        2569, 2570, 2571, 2572, 2573, 2574, 2575, 2576, 2577, 2578,
-        2579, 2580, 2581, 2582, 2583, 2584, 2585, 2587,
-    ];
-
-    /// <summary>
-    /// Checks if the given item ID is a mega stone.
-    /// </summary>
-    /// <param name="itemId">The item ID to check</param>
-    /// <returns>True if the item is a mega stone, false otherwise</returns>
-    public static bool IsMegaStone(int itemId) => MegaStones.Contains((ushort)itemId);
-
     public static T CherishHandler(MysteryGift mg, ITrainerInfo info)
     {
         var result = EntityConverterResult.None;

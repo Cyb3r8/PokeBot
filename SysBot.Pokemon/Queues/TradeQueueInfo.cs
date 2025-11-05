@@ -292,13 +292,33 @@ public sealed record TradeQueueInfo<T>(PokeTradeHub<T> Hub)
     {
         lock (_sync)
         {
-            // Check if user is already in queue
-            var existingEntry = UsersInQueue.FirstOrDefault(z => z.UserID == userID);
-            if (existingEntry != null && !sudo)
+            // Check if user is already in queue (sudo users bypass this check entirely)
+            if (!sudo)
             {
-                // If allowMultiple is true, only allow if it's part of the same batch trade
-                if (!allowMultiple || trade.Trade.UniqueTradeID != existingEntry.Trade.UniqueTradeID)
-                    return QueueResultAdd.AlreadyInQueue;
+                // Get ALL existing entries for this user (not just the first one)
+                var existingEntries = UsersInQueue.Where(z => z.UserID == userID).ToList();
+
+                if (existingEntries.Count > 0)
+                {
+                    // For regular trades (allowMultiple = false), ALWAYS block duplicate entries
+                    // This prevents users from joining the queue multiple times
+                    if (!allowMultiple)
+                    {
+                        LogUtil.LogInfo(nameof(TradeQueueInfo<T>),
+                            $"Blocked duplicate queue entry: User {userID} already has {existingEntries.Count} entry(s) in queue");
+                        return QueueResultAdd.AlreadyInQueue;
+                    }
+
+                    // For batch trades (allowMultiple = true), only allow if same UniqueTradeID
+                    // This allows multiple Pokemon from the same batch, but prevents starting a new batch
+                    if (existingEntries.Any(e => e.UniqueTradeID != trade.Trade.UniqueTradeID))
+                    {
+                        LogUtil.LogInfo(nameof(TradeQueueInfo<T>),
+                            $"Blocked different batch: User {userID} trying to queue UniqueTradeID {trade.Trade.UniqueTradeID} " +
+                            $"but already has UniqueTradeID {existingEntries.First().UniqueTradeID}");
+                        return QueueResultAdd.AlreadyInQueue;
+                    }
+                }
             }
 
             // Check if queue is full (unless user is sudo)

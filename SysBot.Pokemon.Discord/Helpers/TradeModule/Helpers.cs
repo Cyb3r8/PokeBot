@@ -225,12 +225,6 @@ public static class Helpers<T> where T : PKM, new()
         if (!isEgg)
         {
             ApplyStandardItemLogic(pkm);
-
-            // Replace mega stones with Gold Bottle Cap in PLZA (PA9)
-            if (typeof(T) == typeof(PA9) && pkm.HeldItem > 0 && TradeExtensions<T>.IsMegaStone(pkm.HeldItem))
-            {
-                pkm.HeldItem = 796; // Gold Bottle Cap
-            }
         }
 
         // Generate LGPE code if needed
@@ -446,10 +440,14 @@ public static class Helpers<T> where T : PKM, new()
             return;
         }
 
-        // Replace mega stones with Gold Bottle Cap in PLZA (PA9)
-        if (typeof(T) == typeof(PA9) && pk is not null && pk.HeldItem > 0 && TradeExtensions<T>.IsMegaStone(pk.HeldItem))
+        // Block non-tradable items in PLZA mode
+        if (pk is not null && NonTradableItemsPLZA.IsPLZAMode(Info.Hub) && NonTradableItemsPLZA.IsBlocked(pk))
         {
-            pk.HeldItem = 796; // Gold Bottle Cap
+            var itemName = pk.HeldItem > 0 ? GameInfo.GetStrings("en").Item[pk.HeldItem] : "(none)";
+            var reply = await context.Channel.SendMessageAsync($"Trade blocked: The held item '{itemName}' cannot be traded in PLZA.").ConfigureAwait(false);
+            await Task.Delay(6000).ConfigureAwait(false);
+            await reply.DeleteAsync().ConfigureAwait(false);
+            return;
         }
 
         var la = new LegalityAnalysis(pk!);

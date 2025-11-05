@@ -245,7 +245,7 @@ public sealed record TradeQueueInfo<T>(PokeTradeHub<T> Hub)
     {
         lock (_sync)
         {
-            LogUtil.LogInfo($"Removing {detail.Trade.Trainer.TrainerName}", nameof(TradeQueueInfo<T>));
+            LogUtil.LogInfo(nameof(TradeQueueInfo<T>), $"Removing {detail.Trade.Trainer.TrainerName}");
             return UsersInQueue.Remove(detail);
         }
     }
@@ -254,15 +254,25 @@ public sealed record TradeQueueInfo<T>(PokeTradeHub<T> Hub)
     {
         lock (_sync)
         {
-            if (UsersInQueue.Any(z => z.UserID == userID) && !allowMultiple && !sudo)
-                return QueueResultAdd.AlreadyInQueue;
+            // Check if user is already in queue
+            var existingEntry = UsersInQueue.FirstOrDefault(z => z.UserID == userID);
+            if (existingEntry != null && !sudo)
+            {
+                // If allowMultiple is true, only allow if it's part of the same batch trade
+                if (!allowMultiple || trade.Trade.UniqueTradeID != existingEntry.Trade.UniqueTradeID)
+                    return QueueResultAdd.AlreadyInQueue;
+            }
+
+            // Check if queue is full (unless user is sudo)
+            if (!sudo && UsersInQueue.Count >= Hub.Config.Queues.MaxQueueCount)
+                return QueueResultAdd.QueueFull;
 
             if (Hub.Config.Legality.ResetHOMETracker && trade.Trade.TradeData is IHomeTrack t)
                 t.Tracker = 0;
 
-            var priority = sudo ? PokeTradePriorities.Tier1 :
-                           trade.Trade.IsFavored ? PokeTradePriorities.Tier2 :
-                           PokeTradePriorities.TierFree;
+            // Sudo users get Tier1 (highest priority)
+            // Both favored and regular users get TierFree - favoritism is handled by queue positioning logic
+            var priority = sudo ? PokeTradePriorities.Tier1 : PokeTradePriorities.TierFree;
 
             var queue = Hub.Queues.GetQueue(trade.Type);
 

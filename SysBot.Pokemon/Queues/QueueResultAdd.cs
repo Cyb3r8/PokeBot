@@ -7,4 +7,7 @@ public enum QueueResultAdd
 
     /// <summary> Did not add; was already in the queue. </summary>
     AlreadyInQueue,
+
+    /// <summary> Did not add; queue is full. </summary>
+    QueueFull,
 }

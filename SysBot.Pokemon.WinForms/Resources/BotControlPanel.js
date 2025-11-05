@@ -965,7 +965,6 @@ class BotControlPanel {
         this.commandManager = null;
         this.updateManager = null;
         this.restartManager = null;
-        this.logViewer = null;
         this.remoteControl = null;
         
         this.init();
@@ -1149,17 +1148,8 @@ class BotControlPanel {
             confirmUpdate.addEventListener('click', () => this.updateManager.confirmUpdate());
         }
 
-        // Schedule restart toggle
-        const scheduleToggle = document.getElementById('schedule-restart-toggle');
-        if (scheduleToggle) {
-            scheduleToggle.addEventListener('change', () => this.restartManager.toggleScheduled());
-        }
-
-        // Restart time input
-        const restartTime = document.getElementById('restart-time');
-        if (restartTime) {
-            restartTime.addEventListener('change', () => this.restartManager.updateSchedule());
-        }
+        // Schedule restart toggle - handlers are set up in loadSchedule() to avoid duplicates
+        // The loadSchedule() method properly manages event handlers
     }
 
     /**
@@ -1527,6 +1517,7 @@ class UpdateManager {
      */
     async updateAll() {
         this.showModal('update');
+        await this.showUpdateModal();
     }
 
     /**
@@ -2007,13 +1998,15 @@ class RestartManager {
     }
 
     /**
-     * Restart all instances
+     * Restart all instances with improved sequencing
      */
     async restartAll() {
+        // Phase 1: Verify master instance exists
         const response = await this.app.api.get(this.app.api.endpoints.instances);
-        const masterExists = response.instances.some(i => i.isMaster);
+        const masterInstance = response.instances.find(i => i.isMaster);
+        const slaveInstances = response.instances.filter(i => !i.isMaster);
 
-        if (!masterExists) {
+        if (!masterInstance) {
             this.app.toastManager.error('No master instance found. Cannot initiate restart.');
             return;
         }
@@ -2021,12 +2014,25 @@ class RestartManager {
         this.showModal('progress');
         document.getElementById('progress-modal-title').textContent = 'Restart in Progress';
 
+        // Track restart phases
+        this.restartPhases = [
+            { name: 'Stopping bots', progress: 10 },
+            { name: 'Verifying bot status', progress: 25 },
+            { name: 'Stopping services', progress: 40 },
+            { name: 'Restarting slaves', progress: 60 },
+            { name: 'Restarting master', progress: 80 },
+            { name: 'Finalizing', progress: 100 }
+        ];
+        this.currentPhase = 0;
+
         try {
+            // Phase 2: Initiate coordinated restart
+            this.updateRestartPhase('Initializing restart sequence');
             const result = await this.app.api.post(this.app.api.endpoints.restartAll);
 
             if (result.success) {
-                this.updateProgress('All bots idled', result.message || 'Proceeding with restart sequence', 50);
-                await this.proceedWithRestart();
+                // Monitor the restart process
+                await this.monitorRestartProgress(masterInstance, slaveInstances);
             } else {
                 throw new Error(result.error || result.message || 'Failed to initiate restart');
             }
@@ -2041,35 +2047,85 @@ class RestartManager {
     }
 
     /**
-     * Proceed with restart after idling
+     * Monitor restart progress with better error handling
      */
-    async proceedWithRestart() {
-        this.updateProgress('Starting restarts', 'Beginning restart process for all instances...', 60);
+    async monitorRestartProgress(masterInstance, slaveInstances) {
+        const maxWaitTime = 120000; // 2 minutes max
+        const startTime = Date.now();
+        const pollInterval = 2000; // Check every 2 seconds
 
-        try {
-            const response = await this.app.api.post(`${this.app.api.baseUrl}/restart/proceed`);
+        // Monitor restart phases
+        const checkProgress = async () => {
+            try {
+                const elapsed = Date.now() - startTime;
+                if (elapsed > maxWaitTime) {
+                    throw new Error('Restart timeout - process took too long');
+                }
 
-            if (response.success) {
-                this.updateProgress('Restarts in progress', 'Instances are being restarted', 90);
+                // Try to get restart status
+                const statusResponse = await this.app.api.get(`${this.app.api.baseUrl}/restart/status`)
+                    .catch(() => ({ state: 'unknown', message: 'API unavailable' }));
 
-                if (response.masterRestarting) {
+                if (statusResponse.state === 'completed') {
+                    this.updateProgress('Restart complete', 'All instances have been restarted successfully', 100);
                     setTimeout(() => {
-                        this.updateProgress('Master instance restarting', 'This web interface will temporarily disconnect...', 95);
-                    }, 1000);
+                        this.closeModal('progress');
+                        this.app.toastManager.success('All instances restarted successfully');
+                        this.app.refresh();
+                    }, 2000);
+                    return;
+                }
+
+                // Update progress based on state
+                this.updateProgressFromState(statusResponse);
+
+                // Continue monitoring
+                setTimeout(checkProgress, pollInterval);
+
+            } catch (error) {
+                if (error.message.includes('timeout')) {
+                    this.updateProgress('Timeout', error.message, 0);
                 } else {
-                    setTimeout(() => {
-                        this.updateProgress('Restarts complete!', 'All instances have been restarted successfully', 100);
-                        setTimeout(() => {
-                            this.closeModal('progress');
-                            this.app.toastManager.success('All instances restarted');
-                            this.app.refresh();
-                        }, 3000);
-                    }, 5000);
+                    // API might be temporarily unavailable during restart
+                    this.updateProgress('Restarting...', 'Waiting for services to come back online', 75);
+                    setTimeout(checkProgress, pollInterval * 2);
                 }
             }
-        } catch (error) {
-            console.error('Error proceeding with restarts:', error);
-            this.updateProgress('Restart failed', error.message, 0);
+        };
+
+        // Start monitoring
+        await checkProgress();
+    }
+
+    /**
+     * Update progress based on restart state
+     */
+    updateProgressFromState(status) {
+        const stateMessages = {
+            'idle': { msg: 'Ready to restart', progress: 0 },
+            'preparing': { msg: 'Preparing restart sequence', progress: 10 },
+            'stopping_bots': { msg: 'Stopping all bots', progress: 20 },
+            'waiting_idle': { msg: 'Waiting for bots to stop', progress: 30 },
+            'stopping_services': { msg: 'Stopping services', progress: 40 },
+            'restarting_slaves': { msg: 'Restarting slave instances', progress: 60 },
+            'restarting_master': { msg: 'Restarting master instance', progress: 80 },
+            'finalizing': { msg: 'Finalizing restart', progress: 90 },
+            'completed': { msg: 'Restart completed', progress: 100 },
+            'failed': { msg: 'Restart failed', progress: 0 }
+        };
+
+        const info = stateMessages[status.state] || { msg: status.message || 'Processing...', progress: 50 };
+        this.updateProgress(status.state, info.msg, info.progress);
+    }
+
+    /**
+     * Update restart phase display
+     */
+    updateRestartPhase(message) {
+        if (this.currentPhase < this.restartPhases.length) {
+            const phase = this.restartPhases[this.currentPhase];
+            this.updateProgress(phase.name, message || phase.name, phase.progress);
+            this.currentPhase++;
         }
     }
 
@@ -2079,45 +2135,34 @@ class RestartManager {
     async loadSchedule() {
         try {
             const response = await this.app.api.get(this.app.api.endpoints.restartSchedule);
-            const enabled = response.Enabled || false;
-            const time = response.Time || '00:00';
+
+            // Parse the response properly
+            const enabled = response.Enabled === true || response.enabled === true;
+            const time = response.Time || response.time || '00:00';
+
+            console.log(`Loading restart schedule - Enabled: ${enabled}, Time: ${time}`);
 
             const toggle = document.getElementById('schedule-restart-toggle');
             const timeInput = document.getElementById('restart-time');
 
-            if (toggle) toggle.checked = enabled;
+            if (toggle) {
+                toggle.checked = enabled;
+                // Remove any existing event listeners to prevent duplicates
+                toggle.removeEventListener('change', this.toggleHandler);
+                // Create a bound handler
+                this.toggleHandler = () => this.toggleScheduled();
+                toggle.addEventListener('change', this.toggleHandler);
+            }
+
             if (timeInput) {
                 timeInput.value = time;
                 timeInput.disabled = !enabled;
+                // Remove any existing event listeners to prevent duplicates
+                timeInput.removeEventListener('change', this.timeHandler);
+                // Create a bound handler
+                this.timeHandler = () => this.updateSchedule();
+                timeInput.addEventListener('change', this.timeHandler);
             }
-
-            if (enabled) {
-                this.showScheduleStatus();
-                this.startScheduleChecker();
-            }
-        } catch (error) {
-            console.error('Error loading restart schedule:', error);
-        }
-    }
-
-    /**
-     * Toggle scheduled restart
-     */
-    async toggleScheduled() {
-        const toggle = document.getElementById('schedule-restart-toggle');
-        if (!toggle) return;
-
-        const enabled = toggle.checked;
-        const time = document.getElementById('restart-time').value;
-
-        document.getElementById('restart-time').disabled = !enabled;
-
-        try {
-            await this.app.api.post(this.app.api.endpoints.restartSchedule, { Enabled: enabled, Time: time });
-
-            this.app.toastManager.success(
-                enabled ? `Scheduled restart enabled for ${time}` : 'Scheduled restart disabled'
-            );
 
             if (enabled) {
                 this.showScheduleStatus();
@@ -2127,9 +2172,62 @@ class RestartManager {
                 this.stopScheduleChecker();
             }
         } catch (error) {
+            console.error('Error loading restart schedule:', error);
+            // Set defaults on error
+            const toggle = document.getElementById('schedule-restart-toggle');
+            const timeInput = document.getElementById('restart-time');
+            if (toggle) toggle.checked = false;
+            if (timeInput) {
+                timeInput.value = '00:00';
+                timeInput.disabled = true;
+            }
+        }
+    }
+
+    /**
+     * Toggle scheduled restart
+     */
+    async toggleScheduled() {
+        const toggle = document.getElementById('schedule-restart-toggle');
+        const timeInput = document.getElementById('restart-time');
+        if (!toggle || !timeInput) return;
+
+        const enabled = toggle.checked;
+        const time = timeInput.value || '00:00';
+
+        console.log(`Toggling restart schedule - Enabled: ${enabled}, Time: ${time}`);
+
+        // Update UI immediately
+        timeInput.disabled = !enabled;
+
+        try {
+            // Ensure we're sending the correct data format
+            const payload = {
+                Enabled: enabled,
+                Time: time
+            };
+
+            console.log('Sending restart schedule update:', payload);
+            const response = await this.app.api.post(this.app.api.endpoints.restartSchedule, payload);
+            console.log('Restart schedule update response:', response);
+
+            this.app.toastManager.success(
+                enabled ? `Scheduled restart enabled for ${time}` : 'Scheduled restart disabled'
+            );
+
+            if (enabled) {
+                this.showScheduleStatus();
+                this.startScheduleChecker();
+                this.updateNextRestartTime();
+            } else {
+                this.hideScheduleStatus();
+                this.stopScheduleChecker();
+            }
+        } catch (error) {
             console.error('Error updating restart schedule:', error);
+            // Revert the toggle on error
             toggle.checked = !enabled;
-            document.getElementById('restart-time').disabled = enabled;
+            timeInput.disabled = !toggle.checked;
             this.app.toastManager.error('Failed to update restart schedule');
         }
     }
@@ -2138,16 +2236,35 @@ class RestartManager {
      * Update restart schedule time
      */
     async updateSchedule() {
-        const enabled = document.getElementById('schedule-restart-toggle').checked;
-        const time = document.getElementById('restart-time').value;
+        const toggle = document.getElementById('schedule-restart-toggle');
+        const timeInput = document.getElementById('restart-time');
+        if (!toggle || !timeInput) return;
+
+        const enabled = toggle.checked;
+        const time = timeInput.value || '00:00';
+
+        if (!enabled) {
+            console.log('Schedule is disabled, not updating time');
+            return;
+        }
+
+        console.log(`Updating restart time to ${time}`);
 
         try {
-            await this.app.api.post(this.app.api.endpoints.restartSchedule, { Enabled: enabled, Time: time });
+            const payload = {
+                Enabled: enabled,
+                Time: time
+            };
+
+            const response = await this.app.api.post(this.app.api.endpoints.restartSchedule, payload);
+            console.log('Restart time update response:', response);
+
             this.updateNextRestartTime();
             this.app.toastManager.success(`Restart time changed to ${time}`);
         } catch (error) {
             console.error('Error updating restart schedule:', error);
             this.app.toastManager.error('Failed to update restart time');
+            // Reload the schedule to get the correct state
             await this.loadSchedule();
         }
     }

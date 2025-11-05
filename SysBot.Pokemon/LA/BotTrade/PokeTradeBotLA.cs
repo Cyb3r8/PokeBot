@@ -128,8 +128,8 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
             {
                 if (e.StackTrace != null)
                     Connection.LogError(e.StackTrace);
-                var attempts = Hub.Config.Timings.MiscellaneousSettings.ReconnectAttempts;
-                var delay = Hub.Config.Timings.MiscellaneousSettings.ExtraReconnectDelay;
+                var attempts = Hub.Config.Timings.ReconnectAttempts;
+                var delay = Hub.Config.Timings.ExtraReconnectDelay;
                 var protocol = Config.Connection.Protocol;
                 if (!await TryReconnect(attempts, delay, protocol, token).ConfigureAwait(false))
                     return;
@@ -370,7 +370,7 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
         if (poke.Type != PokeTradeType.Random)
             Hub.Config.Stream.StartEnterCode(this);
-        await Task.Delay(Hub.Config.Timings.MiscellaneousSettings.ExtraTimeOpenCodeEntry, token).ConfigureAwait(false);
+        await Task.Delay(Hub.Config.Timings.ExtraTimeOpenCodeEntry, token).ConfigureAwait(false);
 
         var code = poke.Code;
         Log($"Entering Link Trade code: {code:0000 0000}...");
@@ -455,7 +455,7 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
                 Hub.Config.Stream.EndEnterCode(this);
 
-                await Task.Delay(1_000 + Hub.Config.Timings.MiscellaneousSettings.ExtraTimeOpenBox, token).ConfigureAwait(false);
+                await Task.Delay(1_000 + Hub.Config.Timings.ExtraTimeOpenBox, token).ConfigureAwait(false);
 
                 var tradePartner = await GetTradePartnerInfo(token).ConfigureAwait(false);
                 var trainerNID = await GetTradePartnerNID(TradePartnerNIDOffset, token).ConfigureAwait(false);
@@ -645,6 +645,14 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
 
     private async Task<PokeTradeResult> PerformLinkCodeTrade(SAV8LA sav, PokeTradeDetail<PA8> poke, CancellationToken token)
     {
+        // Check if trade was canceled by user
+        if (poke.IsCanceled)
+        {
+            Log($"Trade for {poke.Trainer.TrainerName} was canceled by user.");
+            poke.TradeCanceled(this, PokeTradeResult.UserCanceled);
+            return PokeTradeResult.UserCanceled;
+        }
+
         // Update Barrier Settings
         UpdateBarrier(poke.IsSynchronized);
         poke.TradeInitialize(this);
@@ -677,7 +685,7 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
         // Loading code entry.
         if (poke.Type != PokeTradeType.Random)
             Hub.Config.Stream.StartEnterCode(this);
-        await Task.Delay(Hub.Config.Timings.MiscellaneousSettings.ExtraTimeOpenCodeEntry, token).ConfigureAwait(false);
+        await Task.Delay(Hub.Config.Timings.ExtraTimeOpenCodeEntry, token).ConfigureAwait(false);
 
         var code = poke.Code;
         Log($"Entering Link Trade code: {code:0000 0000}...");
@@ -706,7 +714,7 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
         Hub.Config.Stream.EndEnterCode(this);
 
         // Some more time to fully enter the trade.
-        await Task.Delay(1_000 + Hub.Config.Timings.MiscellaneousSettings.ExtraTimeOpenBox, token).ConfigureAwait(false);
+        await Task.Delay(1_000 + Hub.Config.Timings.ExtraTimeOpenBox, token).ConfigureAwait(false);
 
         var tradePartner = await GetTradePartnerInfo(token).ConfigureAwait(false);
         var trainerNID = await GetTradePartnerNID(TradePartnerNIDOffset, token).ConfigureAwait(false);
@@ -1311,14 +1319,15 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
         // Check if the Pokémon is from a Mystery Gift
         bool isMysteryGift = toSend.FatefulEncounter;
 
-        // Check if Mystery Gift has legitimate preset OT/TID/SID (not PKHeX defaults)
-        bool hasDefaultTrainerInfo = toSend.OriginalTrainerName.Equals("Gengar", StringComparison.OrdinalIgnoreCase) &&
+        // Check if Pokemon has PKHeX default trainer info
+        bool hasDefaultTrainerInfo = toSend.OriginalTrainerName.Equals("PKHeX", StringComparison.OrdinalIgnoreCase) &&
                                     toSend.TID16 == 12345 &&
                                     toSend.SID16 == 54321;
 
-        if (isMysteryGift && !hasDefaultTrainerInfo)
+        // If Pokemon has custom OT/TID/SID (not PKHeX defaults), respect user's specification
+        if (!hasDefaultTrainerInfo)
         {
-            Log("Mystery Gift with preset OT/TID/SID detected. Skipping AutoOT entirely.");
+            Log($"Pokemon has custom OT/TID/SID (OT: '{toSend.OriginalTrainerName}', TID: {toSend.TID16}, SID: {toSend.SID16}). Keeping user-specified values, skipping AutoOT.");
             return toSend;
         }
 

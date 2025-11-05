@@ -107,12 +107,15 @@ public static class QueueHelper<T> where T : PKM, new()
         int batchTradeNumber, int totalBatchTrades, bool isHiddenTrade, bool isMysteryEgg = false,
         List<Pictocodes>? lgcode = null, bool ignoreAutoOT = false, bool setEdited = false, bool isNonNative = false)
     {
+        // Note: This method should only be called for individual trades now
+        // Batch trades use AddBatchContainerToQueueAsync
+
         var user = trader;
         var userID = user.Id;
         var name = user.Username;
         var trainer = new PokeTradeTrainerInfo(trainerName, userID);
         var notifier = new DiscordTradeNotifier<T>(pk, trainer, code, trader, batchTradeNumber, totalBatchTrades,
-            isMysteryEgg, lgcode: lgcode);
+            isMysteryEgg, lgcode: lgcode!);
 
         int uniqueTradeID = GenerateUniqueTradeID();
 
@@ -135,6 +138,9 @@ public static class QueueHelper<T> where T : PKM, new()
         // Start queue position updates for Discord notification
         if (added != QueueResultAdd.AlreadyInQueue && notifier is DiscordTradeNotifier<T> discordNotifier)
         {
+            // IMPORTANT: Update the notifier's unique trade ID to match the one used in the queue
+            // Otherwise the DM will check position with the wrong ID and return incorrect results
+            discordNotifier.UpdateUniqueTradeID(uniqueTradeID);
             await discordNotifier.SendInitialQueueUpdate().ConfigureAwait(false);
         }
 
@@ -149,6 +155,22 @@ public static class QueueHelper<T> where T : PKM, new()
 
         if (added == QueueResultAdd.AlreadyInQueue)
         {
+            await context.Channel.SendMessageAsync($"{trader.Mention} - You are already in the queue!").ConfigureAwait(false);
+            return new TradeQueueResult(false);
+        }
+
+        if (added == QueueResultAdd.QueueFull)
+        {
+            var maxCount = SysCord<T>.Runner.Config.Queues.MaxQueueCount;
+            var embed = new EmbedBuilder()
+                .WithColor(DiscordColor.Red)
+                .WithTitle("🚫 Queue Full")
+                .WithDescription($"The queue is currently full ({maxCount}/{maxCount}). Please try again later when space becomes available.")
+                .WithFooter("Queue will open up as trades are completed")
+                .WithTimestamp(DateTimeOffset.Now)
+                .Build();
+
+            await context.Channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
             return new TradeQueueResult(false);
         }
 
@@ -284,7 +306,7 @@ public static class QueueHelper<T> where T : PKM, new()
         var userID = trader.Id;
         var name = trader.Username;
         var trainer_info = new PokeTradeTrainerInfo(trainer, userID);
-        var notifier = new DiscordTradeNotifier<T>(firstTrade, trainer_info, code, trader, 1, totalBatchTrades, false, lgcode: null);
+        var notifier = new DiscordTradeNotifier<T>(firstTrade, trainer_info, code, trader, 1, totalBatchTrades, false, lgcode: []);
 
         int uniqueTradeID = GenerateUniqueTradeID();
 
@@ -312,13 +334,31 @@ public static class QueueHelper<T> where T : PKM, new()
         // Start queue position updates for Discord notification
         if (added != QueueResultAdd.AlreadyInQueue && notifier is DiscordTradeNotifier<T> discordNotifier)
         {
+            // IMPORTANT: Update the notifier's unique trade ID to match the one used in the queue
+            // Otherwise the DM will check position with the wrong ID and return incorrect results
+            discordNotifier.UpdateUniqueTradeID(uniqueTradeID);
             await discordNotifier.SendInitialQueueUpdate().ConfigureAwait(false);
         }
 
         // Handle the display
         if (added == QueueResultAdd.AlreadyInQueue)
         {
-            await context.Channel.SendMessageAsync("You are already in the queue!").ConfigureAwait(false);
+            await context.Channel.SendMessageAsync($"{trader.Mention} - You are already in the queue!").ConfigureAwait(false);
+            return;
+        }
+
+        if (added == QueueResultAdd.QueueFull)
+        {
+            var maxCount = SysCord<T>.Runner.Config.Queues.MaxQueueCount;
+            var embed = new EmbedBuilder()
+                .WithColor(DiscordColor.Red)
+                .WithTitle("🚫 Queue Full")
+                .WithDescription($"The queue is currently full ({maxCount}/{maxCount}). Please try again later when space becomes available.")
+                .WithFooter("Queue will open up as trades are completed")
+                .WithTimestamp(DateTimeOffset.Now)
+                .Build();
+
+            await context.Channel.SendMessageAsync(embed: embed).ConfigureAwait(false);
             return;
         }
 
@@ -481,11 +521,8 @@ public static class QueueHelper<T> where T : PKM, new()
         {
             string eggImageUrl = GetEggTypeImageUrl(pk);
             speciesImageUrl = TradeExtensions<T>.PokeImg(pk, false, true, null);
-            System.Drawing.Image? combinedImage = await OverlaySpeciesOnEgg(eggImageUrl, speciesImageUrl);
-            if (combinedImage != null)
-                embedImageUrl = SaveImageLocally(combinedImage);
-            else
-                embedImageUrl = speciesImageUrl;
+            System.Drawing.Image combinedImage = await OverlaySpeciesOnEgg(eggImageUrl, speciesImageUrl);
+            embedImageUrl = SaveImageLocally(combinedImage);
         }
         else
         {
@@ -527,8 +564,16 @@ public static class QueueHelper<T> where T : PKM, new()
         }
         else
         {
-            (System.Drawing.Image finalCombinedImage, bool ballImageLoaded) = await OverlayBallOnSpecies(speciesImageUrl, ballImgUrl);
-            embedImageUrl = SaveImageLocally(finalCombinedImage);
+            (System.Drawing.Image? finalCombinedImage, bool ballImageLoaded) = await OverlayBallOnSpecies(speciesImageUrl, ballImgUrl);
+            if (finalCombinedImage != null)
+            {
+                embedImageUrl = SaveImageLocally(finalCombinedImage);
+            }
+            else
+            {
+                // Fall back to species image if overlay failed
+                embedImageUrl = speciesImageUrl;
+            }
 
             if (!ballImageLoaded)
             {
@@ -540,15 +585,13 @@ public static class QueueHelper<T> where T : PKM, new()
         return (embedImageUrl, new DiscordColor(R, G, B));
     }
 
-    private static async Task<(System.Drawing.Image, bool)> OverlayBallOnSpecies(string speciesImageUrl, string ballImageUrl)
+    private static async Task<(System.Drawing.Image?, bool)> OverlayBallOnSpecies(string speciesImageUrl, string ballImageUrl)
     {
         using var speciesImage = await LoadImageFromUrl(speciesImageUrl);
         if (speciesImage == null)
         {
             Console.WriteLine("Species image could not be loaded.");
-#pragma warning disable CS8619 // Nullability of reference types in value doesn't match target type.
             return (null, false);
-#pragma warning restore CS8619 // Nullability of reference types in value doesn't match target type.
         }
 
         var ballImage = await LoadImageFromUrl(ballImageUrl);
@@ -576,13 +619,15 @@ public static class QueueHelper<T> where T : PKM, new()
         }
     }
 
-    private static async Task<System.Drawing.Image?> OverlaySpeciesOnEgg(string eggImageUrl, string speciesImageUrl)
+    private static async Task<System.Drawing.Image> OverlaySpeciesOnEgg(string eggImageUrl, string speciesImageUrl)
     {
         System.Drawing.Image? eggImage = await LoadImageFromUrl(eggImageUrl);
         System.Drawing.Image? speciesImage = await LoadImageFromUrl(speciesImageUrl);
         
         if (eggImage == null || speciesImage == null)
-            return null;
+        {
+            throw new InvalidOperationException("Failed to load egg or species image.");
+        }
 
 #pragma warning disable CA1416 // Validate platform compatibility
         double scaleRatio = Math.Min((double)eggImage.Width / speciesImage.Width, (double)eggImage.Height / speciesImage.Height);
@@ -769,7 +814,7 @@ public static class QueueHelper<T> where T : PKM, new()
                     if (!permissions.SendMessages)
                     {
                         message = "You must grant me \"Send Messages\" permissions!";
-                        Base.LogUtil.LogError(message, "QueueHelper");
+                        Base.LogUtil.LogError("QueueHelper", message);
                         return;
                     }
                     if (!permissions.ManageMessages)

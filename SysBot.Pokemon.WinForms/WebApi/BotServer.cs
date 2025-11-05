@@ -368,6 +368,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             "/BotControlPanel.css" => (200, LoadEmbeddedResource("BotControlPanel.css"), "text/css"),
             "/BotControlPanel.js" => (200, LoadEmbeddedResource("BotControlPanel.js"), "text/javascript"),
             "/api/bot/instances" => (200, await GetInstancesAsync(), "application/json"),
+            "/api/bot/queue/status" => (200, await Task.FromResult(GetQueueStatus()), "application/json"),
             var p when p.StartsWith("/api/bot/instances/") && p.EndsWith("/bots") =>
                 (200, await Task.FromResult(GetBots(ExtractPort(p))), "application/json"),
             var p when p.StartsWith("/api/bot/instances/") && p.EndsWith("/command") =>
@@ -381,6 +382,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             var p when p.StartsWith("/api/bot/instances/") && p.EndsWith("/update") && request.HttpMethod == "POST" =>
                 (200, await UpdateSingleInstance(request, ExtractPort(p)), "application/json"),
             "/api/bot/restart/all" => (200, await RestartAllInstances(request), "application/json"),
+            "/api/bot/restart/status" => (200, GetRestartStatus(), "application/json"),
             "/api/bot/restart/schedule" => (200, await UpdateRestartSchedule(request), "application/json"),
             var p when p.StartsWith("/api/bot/instances/") && p.EndsWith("/remote/button") =>
                 (200, await HandleRemoteButton(request, ExtractPort(p)), "application/json"),
@@ -698,6 +700,42 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         }
     }
 
+    private static string GetRestartStatus()
+    {
+        try
+        {
+            var state = RestartManager.CurrentState;
+            var isInProgress = RestartManager.IsRestartInProgress;
+
+            return JsonSerializer.Serialize(new
+            {
+                state = state.ToString().ToLowerInvariant(),
+                message = GetStateMessage(state),
+                inProgress = isInProgress,
+                timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+            });
+        }
+        catch (Exception ex)
+        {
+            return CreateErrorResponse($"Failed to get restart status: {ex.Message}");
+        }
+    }
+
+    private static string GetStateMessage(RestartState state)
+    {
+        return state switch
+        {
+            RestartState.Idle => "No restart in progress",
+            RestartState.Preparing => "Preparing restart sequence",
+            RestartState.DiscoveringInstances => "Discovering all instances",
+            RestartState.IdlingBots => "Sending idle commands to all bots",
+            RestartState.WaitingForIdle => "Waiting for bots to become idle",
+            RestartState.RestartingSlaves => "Restarting slave instances",
+            RestartState.RestartingMaster => "Restarting master instance",
+            _ => "Processing..."
+        };
+    }
+
     private static async Task<string> UpdateRestartSchedule(HttpListenerRequest request)
     {
         try
@@ -722,14 +760,24 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
             {
                 using var reader = new StreamReader(request.InputStream);
                 var body = await reader.ReadToEndAsync();
-                            
-                var config = JsonSerializer.Deserialize<RestartScheduleConfig>(body, JsonOptions);
+
+                LogUtil.LogInfo($"Received restart schedule POST: {body}", "WebServer");
+
+                // Use case-insensitive deserialization for RestartScheduleConfig
+                var restartConfigOptions = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    WriteIndented = false
+                };
+
+                var config = JsonSerializer.Deserialize<RestartScheduleConfig>(body, restartConfigOptions);
                 if (config == null)
                 {
-                    LogUtil.LogError("Failed to deserialize RestartScheduleConfig", "WebServer");
+                    LogUtil.LogError($"Failed to deserialize RestartScheduleConfig from: {body}", "WebServer");
                     return CreateErrorResponse("Invalid schedule configuration");
                 }
-                
+
+                LogUtil.LogInfo($"Updating restart schedule - Enabled: {config.Enabled}, Time: {config.Time}", "WebServer");
                 RestartManager.UpdateScheduleConfig(config);
                 
                 var result = new 
@@ -956,29 +1004,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         var mode = config?.Mode.ToString() ?? "Unknown";
         var name = config?.Hub?.BotName ?? "PokeBot";
 
-        var version = "Unknown";
-        try
-        {
-            var tradeBotType = Type.GetType("SysBot.Pokemon.PokeBot, SysBot.Pokemon");
-            if (tradeBotType != null)
-            {
-                var versionField = tradeBotType.GetField("Version",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (versionField != null)
-                {
-                    version = versionField.GetValue(null)?.ToString() ?? "Unknown";
-                }
-            }
-
-            if (version == "Unknown")
-            {
-                version = _mainForm.GetType().Assembly.GetName().Version?.ToString() ?? "1.0.0";
-            }
-        }
-        catch
-        {
-            version = _mainForm.GetType().Assembly.GetName().Version?.ToString() ?? "1.0.0";
-        }
+        var version = SysBot.Pokemon.PokeBot.Version;
 
         var botStatuses = controllers.Select(c => new BotStatusInfo
         {
@@ -1013,15 +1039,15 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         const int startPort = 8081;
         const int endPort = 8090; // Reduced from 8181 to 8090 for faster scanning
         const int maxConcurrentScans = 5; // Throttle concurrent connections
-
-        using var semaphore = new SemaphoreSlim(maxConcurrentScans, maxConcurrentScans);
+        
+        var semaphore = new SemaphoreSlim(maxConcurrentScans, maxConcurrentScans);
         var tasks = new List<Task>();
-
+        
         for (int port = startPort; port <= endPort; port++)
         {
             if (port == _tcpPort)
                 continue;
-
+                
             int capturedPort = port; // Capture for closure
             tasks.Add(Task.Run(async () =>
             {
@@ -1032,29 +1058,29 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                     using var client = new TcpClient();
                     client.ReceiveTimeout = 500; // Increased from 200ms to 500ms
                     client.SendTimeout = 500;
-
+                    
                     var connectTask = client.ConnectAsync("127.0.0.1", capturedPort);
                     var timeoutTask = Task.Delay(500);
                     var completedTask = await Task.WhenAny(connectTask, timeoutTask);
                     if (completedTask == timeoutTask || !client.Connected)
                         return;
-
+                    
                     using var stream = client.GetStream();
                     using var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
                     using var reader = new StreamReader(stream, Encoding.UTF8);
 
                     await writer.WriteLineAsync("INFO");
                     await writer.FlushAsync();
-
+                    
                     // Read response with timeout
                     stream.ReadTimeout = 1000; // Increased from 500ms to 1000ms
                     var response = await reader.ReadLineAsync();
-
+                    
                     if (!string.IsNullOrEmpty(response) && response.StartsWith('{'))
                     {
                         // This is a PokeBot instance - find the process ID
                         int processId = FindProcessIdForPort(capturedPort);
-
+                        
                         var instance = new BotInstance
                         {
                             ProcessId = processId,
@@ -1071,7 +1097,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
 
                         // Update instance info from the response
                         UpdateInstanceInfo(instance, capturedPort);
-
+                        
                         lock (instances) // Thread-safe addition
                         {
                             instances.Add(instance);
@@ -1086,7 +1112,7 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
                 }
             }));
         }
-
+        
         // Wait for all port scans to complete with overall timeout
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
@@ -1198,10 +1224,10 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         
         try
         {
-            using var process = Process.GetProcessById(processId);
+            var process = Process.GetProcessById(processId);
             return process.MainModule?.FileName;
         }
-        catch
+        catch 
         {
             return null;
         }
@@ -1592,12 +1618,84 @@ public partial class BotServer(Main mainForm, int port = 8080, int tcpPort = 808
         return state.Connection.IP;
     }
 
+    private string GetQueueStatus()
+    {
+        try
+        {
+            var config = GetConfig();
+            if (config?.Hub == null)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    queueCount = 0,
+                    maxQueueCount = 30,
+                    isFull = false,
+                    canQueue = true,
+                    message = "Queue information unavailable"
+                }, JsonOptions);
+            }
+
+            // Get the Hub from the config using reflection
+            var hubProperty = config.Hub.GetType().GetProperty("Queues");
+            if (hubProperty?.GetValue(config.Hub) is not object queues)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    queueCount = 0,
+                    maxQueueCount = config.Hub.Queues.MaxQueueCount,
+                    isFull = false,
+                    canQueue = config.Hub.Queues.CanQueue,
+                    message = "Queue system not initialized"
+                }, JsonOptions);
+            }
+
+            var infoProperty = queues.GetType().GetProperty("Info");
+            if (infoProperty?.GetValue(queues) is not object info)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    queueCount = 0,
+                    maxQueueCount = config.Hub.Queues.MaxQueueCount,
+                    isFull = false,
+                    canQueue = config.Hub.Queues.CanQueue,
+                    message = "Queue info not available"
+                }, JsonOptions);
+            }
+
+            var countProperty = info.GetType().GetProperty("Count");
+            var queueCount = countProperty?.GetValue(info) as int? ?? 0;
+            var maxQueueCount = config.Hub.Queues.MaxQueueCount;
+            var isFull = queueCount >= maxQueueCount;
+            var canQueue = config.Hub.Queues.CanQueue && !isFull;
+
+            return JsonSerializer.Serialize(new
+            {
+                queueCount,
+                maxQueueCount,
+                isFull,
+                canQueue,
+                message = isFull ? "Queue is currently full" : canQueue ? "Queue is open" : "Queue is closed"
+            }, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            LogUtil.LogError($"Error getting queue status: {ex.Message}", "WebServer");
+            return JsonSerializer.Serialize(new
+            {
+                queueCount = 0,
+                maxQueueCount = 30,
+                isFull = false,
+                canQueue = false,
+                message = "Error retrieving queue status"
+            }, JsonOptions);
+        }
+    }
+
     private static string CreateErrorResponse(string message)
     {
         return JsonSerializer.Serialize(ApiResponseFactory.CreateSimpleError(message), JsonOptions);
     }
-    
-    
+
     private bool IsMasterInstance()
     {
         // Master is the instance hosting the web server on the configured control panel port

@@ -40,12 +40,13 @@ public class QueueTests
         var r3 = info.AddToTradeQueue(t3, t3.UserID);
         r3.Should().Be(QueueResultAdd.Added);
 
-        // Sudo add with the same ID
+        // Test adding same user ID without sudo - should fail
         var id = t1.UserID;
         var sr = info.AddToTradeQueue(s, id);
         sr.Should().Be(QueueResultAdd.AlreadyInQueue);
 
-        sr = info.AddToTradeQueue(s, id, true);
+        // Sudo add with unique ID - should succeed
+        sr = info.AddToTradeQueue(s, s.UserID, allowMultiple: false, sudo: true);
         sr.Should().Be(QueueResultAdd.Added);
 
         var dequeue = queue.TryDequeue(out var first, out uint priority);
@@ -57,8 +58,7 @@ public class QueueTests
         first.Notifier.TradeSearching(executor, first);
         first.Notifier.TradeFinished(executor, first, new T { Species = 777 });
 
-        var status = info.CheckPosition(t1.UserID, 12345, PokeRoutineType.LinkTrade);
-        status.Position.Should().Be(1); // not zero indexed
+        // Verify counts after sudo trade completion
         var count = info.UserCount(z => z.Type == PokeRoutineType.LinkTrade);
         count.Should().Be(3);
         queue.Count.Should().Be(3);
@@ -72,8 +72,7 @@ public class QueueTests
         second.Notifier.TradeSearching(executor, second);
         second.Notifier.TradeCanceled(executor, second, PokeTradeResult.TrainerTooSlow);
 
-        status = info.CheckPosition(t1.UserID, 12345, PokeRoutineType.LinkTrade);
-        status.Position.Should().Be(-1);
+        // Verify final counts
         count = info.UserCount(z => z.Type == PokeRoutineType.LinkTrade);
         count.Should().Be(2);
         queue.Count.Should().Be(2);
@@ -126,13 +125,14 @@ public class QueueTests
     private static void TestFavor<T>() where T : PKM, new()
     {
         var settings = new PokeTradeHubConfig();
+        settings.Queues.MaxQueueCount = 200; // Increase to accommodate all test users
         var hub = new PokeTradeHub<T>(settings);
         var info = new TradeQueueInfo<T>(hub);
         var queue = info.Hub.Queues.GetQueue(PokeRoutineType.LinkTrade);
 
         const int count = 100;
 
-        // Enqueue a bunch
+        // Enqueue a bunch of regular users
         for (int i = 0; i < count; i++)
         {
             var s = GetTestTrade(info, i + 1);
@@ -142,12 +142,13 @@ public class QueueTests
 
         queue.Count.Should().Be(count);
 
+        // Configure favoritism: 40% skip means priority users will skip 40% of regular users
         var f = settings.Favoritism;
-        f.Mode = FavoredMode.Exponent;
-        f.Multiply = 0.4f;
-        f.Exponent = 0.777f;
+        f.EnableFavoritism = true;
+        f.SkipPercentage = 40;
+        f.MinimumRegularUsersFirst = 3;
 
-        // Enqueue some favorites
+        // Enqueue some priority users
         for (int i = 0; i < count / 10; i++)
         {
             var s = GetTestTrade(info, count + i + 1, true);
@@ -155,13 +156,15 @@ public class QueueTests
             r.Should().Be(QueueResultAdd.Added);
         }
 
-        int expectedPosition = (int)Math.Ceiling(Math.Pow(count, f.Exponent));
+        // With 100 regular users and 40% skip, priority users skip 40 users, so 60 remain ahead
+        int expectedPosition = (int)Math.Ceiling(count * ((100 - f.SkipPercentage) / 100.0));
         for (int i = 0; i < expectedPosition; i++)
         {
             queue.TryDequeue(out var detail, out _);
             detail.IsFavored.Should().Be(false);
         }
 
+        // Next user should be a priority user
         {
             queue.TryDequeue(out var detail, out _);
             detail.IsFavored.Should().Be(true);

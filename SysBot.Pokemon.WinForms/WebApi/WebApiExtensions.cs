@@ -43,7 +43,7 @@ public static class WebApiExtensions
             // Validate port range
             if (_webPort < 1 || _webPort > 65535)
             {
-                LogUtil.LogError($"Invalid web server port {_webPort}. Using default port 8080.", "WebServer");
+                LogUtil.LogError("WebServer", $"Invalid web server port {_webPort}. Using default port 8080.");
                 _webPort = 8080;
             }
             
@@ -53,11 +53,11 @@ public static class WebApiExtensions
             // Check if web server is enabled
             if (!mainForm.Config.Hub.WebServer.EnableWebServer)
             {
-                LogUtil.LogInfo("Web Control Panel is disabled in settings.", "WebServer");
+                LogUtil.LogInfo("WebServer", "Web Control Panel is disabled in settings.");
                 return;
             }
             
-            LogUtil.LogInfo($"Web Control Panel will be hosted on port {_webPort}", "WebServer");
+            LogUtil.LogInfo("WebServer", $"Web Control Panel will be hosted on port {_webPort}");
         }
         else
         {
@@ -89,7 +89,7 @@ public static class WebApiExtensions
                     var currentState = UpdateManager.GetCurrentState();
                     if (currentState != null && !currentState.IsComplete)
                     {
-                        LogUtil.LogInfo($"Found incomplete update session {currentState.SessionId}, attempting to resume", "WebServer");
+                        LogUtil.LogInfo("WebServer", $"Found incomplete update session {currentState.SessionId}, attempting to resume");
                         await UpdateManager.StartOrResumeUpdateAsync(mainForm, _tcpPort);
                     }
                 });
@@ -114,7 +114,7 @@ public static class WebApiExtensions
                 var currentState = UpdateManager.GetCurrentState();
                 if (currentState != null && !currentState.IsComplete)
                 {
-                    LogUtil.LogInfo($"Found incomplete update session {currentState.SessionId}, attempting to resume", "WebServer");
+                    LogUtil.LogInfo("WebServer", $"Found incomplete update session {currentState.SessionId}, attempting to resume");
                     await UpdateManager.StartOrResumeUpdateAsync(mainForm, _tcpPort);
                 }
             });
@@ -138,7 +138,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Failed to initialize web server: {ex.Message}", "WebServer");
+            LogUtil.LogError("WebServer", $"Failed to initialize web server: {ex.Message}");
         }
     }
 
@@ -187,7 +187,7 @@ public static class WebApiExtensions
 
                         try
                         {
-                            using var process = Process.GetProcessById(pid);
+                            var process = Process.GetProcessById(pid);
                             if (process.ProcessName.Contains("SysBot", StringComparison.OrdinalIgnoreCase) ||
                                 process.ProcessName.Contains("PokeBot", StringComparison.OrdinalIgnoreCase))
                             {
@@ -199,18 +199,18 @@ public static class WebApiExtensions
                         }
 
                         File.Delete(portFile);
-                        LogUtil.LogInfo($"Cleaned up stale port file: {Path.GetFileName(portFile)}", "WebServer");
+                        LogUtil.LogInfo("WebServer", $"Cleaned up stale port file: {Path.GetFileName(portFile)}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogUtil.LogError($"Error processing port file {portFile}: {ex.Message}", "WebServer");
+                    LogUtil.LogError("WebServer", $"Error processing port file {portFile}: {ex.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Failed to cleanup stale port files: {ex.Message}", "WebServer");
+            LogUtil.LogError("WebServer", $"Failed to cleanup stale port files: {ex.Message}");
         }
     }
 
@@ -235,7 +235,7 @@ public static class WebApiExtensions
 
                     if (!IsPortInUse(_webPort))
                     {
-                        LogUtil.LogInfo("Master web server is down. Attempting to take over...", "WebServer");
+                        LogUtil.LogInfo("WebServer", "Master web server is down. Attempting to take over...");
 
                         await Task.Delay(random.Next(1000, 3000));
 
@@ -248,7 +248,7 @@ public static class WebApiExtensions
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    LogUtil.LogError($"Error in master monitor: {ex.Message}", "WebServer");
+                    LogUtil.LogError("WebServer", $"Error in master monitor: {ex.Message}");
                 }
             }
         }, _monitorCts.Token);
@@ -266,12 +266,12 @@ public static class WebApiExtensions
             _monitorCts?.Cancel();
             _monitorCts = null;
 
-            LogUtil.LogInfo($"Successfully took over as master web server on port {_webPort}", "WebServer");
-            LogUtil.LogInfo($"Web interface is now available at http://localhost:{_webPort}", "WebServer");
+            LogUtil.LogInfo("WebServer", $"Successfully took over as master web server on port {_webPort}");
+            LogUtil.LogInfo("WebServer", $"Web interface is now available at http://localhost:{_webPort}");
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Failed to take over as master: {ex.Message}", "WebServer");
+            LogUtil.LogError("WebServer", $"Failed to take over as master: {ex.Message}");
             StartMasterMonitor();
         }
     }
@@ -322,7 +322,7 @@ public static class WebApiExtensions
         catch (Exception ex) when (ex.Message.Contains("conflicts with an existing registration"))
         {
             // Another instance became master first - gracefully become a slave
-            LogUtil.LogInfo($"Port {_webPort} conflict during startup, starting as slave", "WebServer");
+            LogUtil.LogInfo("WebServer", $"Port {_webPort} conflict during startup, starting as slave");
             StartTcpOnly();  // This will create the port file as a slave
         }
     }
@@ -345,14 +345,14 @@ public static class WebApiExtensions
                 _tcp = new TcpListener(System.Net.IPAddress.Loopback, _tcpPort);
                 _tcp.Start();
                 
-                LogUtil.LogInfo($"TCP listener started successfully on port {_tcpPort}", "TCP");
+                LogUtil.LogInfo("TCP", $"TCP listener started successfully on port {_tcpPort}");
                 
                 await AcceptClientsAsync(cancellationToken);
                 break;
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse && retry < maxRetries - 1)
             {
-                LogUtil.LogInfo($"TCP port {_tcpPort} in use, finding new port (attempt {retry + 1}/{maxRetries})", "TCP");
+                LogUtil.LogInfo("TCP", $"TCP port {_tcpPort} in use, finding new port (attempt {retry + 1}/{maxRetries})");
                 await Task.Delay(random.Next(500, 1500), cancellationToken);
                 
                 lock (_portLock)
@@ -370,11 +370,11 @@ public static class WebApiExtensions
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                LogUtil.LogError($"TCP listener error: {ex.Message}", "TCP");
+                LogUtil.LogError("TCP", $"TCP listener error: {ex.Message}");
                 
                 if (retry == maxRetries - 1)
                 {
-                    LogUtil.LogError($"Failed to start TCP listener after {maxRetries} attempts", "TCP");
+                    LogUtil.LogError("TCP", $"Failed to start TCP listener after {maxRetries} attempts");
                     throw new InvalidOperationException("Unable to find available TCP port");
                 }
             }
@@ -413,7 +413,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Unhandled error in HandleClient: {ex.Message}", "TCP");
+            LogUtil.LogError("TCP", $"Unhandled error in HandleClient: {ex.Message}");
         }
     }
 
@@ -449,7 +449,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Error handling TCP client: {ex.Message}", "TCP");
+            LogUtil.LogError("TCP", $"Error handling TCP client: {ex.Message}");
         }
     }
     
@@ -502,7 +502,7 @@ public static class WebApiExtensions
             {
                 if (_updateInProgress)
                 {
-                    LogUtil.LogInfo("Update already in progress - ignoring duplicate request", "WebApiExtensions");
+                    LogUtil.LogInfo("WebApiExtensions", "Update already in progress - ignoring duplicate request");
                     return "Update already in progress";
                 }
                 _updateInProgress = true;
@@ -514,7 +514,7 @@ public static class WebApiExtensions
                 return "ERROR: Main form not initialized";
             }
 
-            LogUtil.LogInfo($"Update triggered for instance on port {_tcpPort}", "WebApiExtensions");
+            LogUtil.LogInfo("WebApiExtensions", $"Update triggered for instance on port {_tcpPort}");
 
             _main.BeginInvoke((System.Windows.Forms.MethodInvoker)(async () =>
             {
@@ -529,7 +529,7 @@ public static class WebApiExtensions
                 }
                 catch (Exception ex)
                 {
-                    LogUtil.LogError($"Error during update: {ex.Message}", "WebApiExtensions");
+                    LogUtil.LogError("WebApiExtensions", $"Error during update: {ex.Message}");
                 }
             }));
 
@@ -666,7 +666,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"GetBotsList error: {ex.Message}", "WebAPI");
+            LogUtil.LogError("WebAPI", $"GetBotsList error: {ex.Message}");
             return $"ERROR: Failed to get bots list - {ex.Message}";
         }
     }
@@ -914,7 +914,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Failed to create port file: {ex.Message}", "WebServer");
+            LogUtil.LogError("WebServer", $"Failed to create port file: {ex.Message}");
         }
     }
 
@@ -931,7 +931,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Failed to cleanup port file: {ex.Message}", "WebServer");
+            LogUtil.LogError("WebServer", $"Failed to cleanup port file: {ex.Message}");
         }
     }
 
@@ -1035,7 +1035,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Error stopping web server: {ex.Message}", "WebServer");
+            LogUtil.LogError("WebServer", $"Error stopping web server: {ex.Message}");
         }
     }
 
@@ -1065,7 +1065,7 @@ public static class WebApiExtensions
         }
         catch (Exception ex)
         {
-            LogUtil.LogError($"Error checking post-restart/update startup: {ex.Message}", "StartupManager");
+            LogUtil.LogError("StartupManager", $"Error checking post-restart/update startup: {ex.Message}");
         }
     }
     

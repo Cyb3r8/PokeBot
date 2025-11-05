@@ -1187,10 +1187,15 @@ namespace SysBot.Pokemon.WinForms
                 e.Graphics.DrawLine(pen, 0, rect.Height - 1, rect.Width, rect.Height - 1);
             }
 
-            // Draw static logo text
+            // Draw main logo text with metallic effect (static, no animation)
+            DrawStaticMetallicText(e.Graphics, rect);
+        }
+
+        private void DrawStaticMetallicText(Graphics g, Rectangle rect)
+        {
             using var font = ScaleFont(new Font("Segoe UI", 14F, FontStyle.Bold));
             var text = "POKÉBOT";
-            var textSize = e.Graphics.MeasureString(text, font);
+            var textSize = g.MeasureString(text, font);
             var x = (rect.Width - textSize.Width) / 2;
             var y = (rect.Height - textSize.Height) / 2;
 
@@ -1207,13 +1212,14 @@ namespace SysBot.Pokemon.WinForms
                 // Shadow
                 using (var shadowBrush = new SolidBrush(Color.FromArgb(80, 0, 0, 0)))
                 {
-                    e.Graphics.DrawString(text, font, shadowBrush, x + 2, y + 2);
+                    g.DrawString(text, font, shadowBrush, x + 2, y + 2);
                 }
 
-                // Main text
-                e.Graphics.DrawString(text, font, metalBrush, x, y);
+                // Main text (static, no glow effects)
+                g.DrawString(text, font, metalBrush, x, y);
             }
         }
+
 
         private void HeaderPanel_Paint(object sender, PaintEventArgs e)
         {

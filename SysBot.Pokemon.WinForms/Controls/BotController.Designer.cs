@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace SysBot.Pokemon.WinForms
@@ -10,14 +11,43 @@ namespace SysBot.Pokemon.WinForms
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing)
             {
-                components.Dispose();
-            }
-            if (animationTimer != null)
-            {
-                animationTimer.Stop();
-                animationTimer.Dispose();
+                // Unsubscribe event handlers to prevent memory leaks
+                if (contextMenu != null)
+                {
+                    contextMenu.Opening -= RcMenuOnOpening;
+                }
+
+                // Unsubscribe MouseEnter/MouseLeave handlers from all controls
+                foreach (var c in Controls.OfType<Control>())
+                {
+                    if (c != btnActions)
+                    {
+                        c.MouseEnter -= BotController_MouseEnter;
+                        c.MouseLeave -= BotController_MouseLeave;
+                    }
+                }
+
+                if (mainPanel != null)
+                {
+                    foreach (var c in mainPanel.Controls.OfType<Control>())
+                    {
+                        c.MouseEnter -= BotController_MouseEnter;
+                        c.MouseLeave -= BotController_MouseLeave;
+                    }
+                }
+
+                if (animationTimer != null)
+                {
+                    animationTimer.Stop();
+                    animationTimer.Dispose();
+                }
+
+                if (components != null)
+                {
+                    components.Dispose();
+                }
             }
             base.Dispose(disposing);
         }

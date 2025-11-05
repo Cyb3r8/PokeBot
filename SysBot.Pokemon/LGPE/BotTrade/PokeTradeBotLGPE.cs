@@ -43,7 +43,7 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
     /// Folder to dump received trade data to.
     /// </summary>
     /// <remarks>If null, will skip dumping.</remarks>
-    private readonly IDumper DumpSetting = Hub.Config.Folder;
+    private readonly FolderSettings DumpSetting = Hub.Config.Folder;
 
     /// <summary>
     /// Synchronized start for multiple bots.
@@ -87,6 +87,8 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
 
     public override async Task RebootAndStop(CancellationToken t)
     {
+        Hub.Queues.Info.CleanStuckTrades();
+        await Task.Delay(2_000, t).ConfigureAwait(false);
         await ReOpenGame(Hub.Config, t).ConfigureAwait(false);
         await HardStop().ConfigureAwait(false);
         await Task.Delay(2_000, t).ConfigureAwait(false);
@@ -235,6 +237,14 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
 
     private async Task<PokeTradeResult> PerformLinkCodeTrade(SAV7b sav, PokeTradeDetail<PB7> poke, CancellationToken token)
     {
+        // Check if trade was canceled by user
+        if (poke.IsCanceled)
+        {
+            Log($"Trade for {poke.Trainer.TrainerName} was canceled by user.");
+            poke.TradeCanceled(this, PokeTradeResult.UserCanceled);
+            return PokeTradeResult.UserCanceled;
+        }
+
         UpdateBarrier(poke.IsSynchronized);
         poke.TradeInitialize(this);
         Hub.Config.Stream.EndEnterCode(this);
@@ -338,13 +348,21 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
             uint displayTID = BinaryPrimitives.ReadUInt32LittleEndian(tradepartnersav.Blocks.Status.Data[0..4]) % 1_000_000;
             string tid7 = displayTID.ToString("D6");
             string sid7 = displaySID.ToString("D4");
-            Log($"Found Link Trade Partner: {tradepartnersav.OT}, TID7: {tid7}, SID7: {sid7}, Game: {tradepartnersav.Version}");
 
-            // Save the OT, TID7, and SID7 information in the TradeCodeStorage for tradepartnersav
-            tradeCodeStorage.UpdateTradeDetails(poke.Trainer.ID, tradepartnersav.OT, int.Parse(tid7), int.Parse(sid7));
+            // Extract gender and language
+            byte gender = tradepartnersav.Blocks.Status.Data[5];
+            int language = tradepartnersav.Blocks.Status.Data[0x35];
+
+            string genderText = gender == 0 ? "Male" : "Female";
+            string languageText = GetLanguageName(language);
+
+            Log($"Found Link Trade Partner: {tradepartnersav.OT}, TID7: {tid7}, SID7: {sid7}, Gender: {genderText}, Language: {languageText}, Game: {tradepartnersav.Version}");
+
+            // Save all trainer details in the TradeCodeStorage
+            tradeCodeStorage.UpdateTradeDetails(poke.Trainer.ID, tradepartnersav.OT, int.Parse(tid7), int.Parse(sid7), gender, language);
 
             // Send notification with trainer details
-            poke.SendNotification(this, $"Found Partner - OT: {tradepartnersav.OT}, TID: {tid7}, SID: {sid7}");
+            poke.SendNotification(this, $"Found Partner - OT: {tradepartnersav.OT}, TID: {tid7}, SID: {sid7}, Gender: {genderText}, Language: {languageText}");
         }
 
         if (tradepartnersav2.OT != sav.OT)
@@ -353,13 +371,21 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
             uint displayTID = BinaryPrimitives.ReadUInt32LittleEndian(tradepartnersav2.Blocks.Status.Data[0..4]) % 1_000_000;
             string tid7 = displayTID.ToString("D6");
             string sid7 = displaySID.ToString("D4");
-            Log($"Found Link Trade Partner: {tradepartnersav2.OT}, TID7: {tid7}, SID7: {sid7}");
 
-            // Save the OT, TID7, and SID7 information in the TradeCodeStorage for tradepartnersav2
-            tradeCodeStorage.UpdateTradeDetails(poke.Trainer.ID, tradepartnersav2.OT, int.Parse(tid7), int.Parse(sid7));
+            // Extract gender and language
+            byte gender = tradepartnersav2.Blocks.Status.Data[5];
+            int language = tradepartnersav2.Blocks.Status.Data[0x35];
+
+            string genderText = gender == 0 ? "Male" : "Female";
+            string languageText = GetLanguageName(language);
+
+            Log($"Found Link Trade Partner: {tradepartnersav2.OT}, TID7: {tid7}, SID7: {sid7}, Gender: {genderText}, Language: {languageText}");
+
+            // Save all trainer details in the TradeCodeStorage
+            tradeCodeStorage.UpdateTradeDetails(poke.Trainer.ID, tradepartnersav2.OT, int.Parse(tid7), int.Parse(sid7), gender, language);
 
             // Send notification with trainer details
-            poke.SendNotification(this, $"Found Partner - OT: {tradepartnersav2.OT}, TID: {tid7}, SID: {sid7}");
+            poke.SendNotification(this, $"Found Partner - OT: {tradepartnersav2.OT}, TID: {tid7}, SID: {sid7}, Gender: {genderText}, Language: {languageText}");
         }
 
 
@@ -419,6 +445,23 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
 
         await ExitTrade(false, token).ConfigureAwait(false);
         return PokeTradeResult.Success;
+    }
+
+    private static string GetLanguageName(int languageID)
+    {
+        return languageID switch
+        {
+            1 => "Japanese",
+            2 => "English",
+            3 => "French",
+            4 => "Italian",
+            5 => "German",
+            7 => "Spanish",
+            8 => "Korean",
+            9 => "Chinese (Simplified)",
+            10 => "Chinese (Traditional)",
+            _ => $"Unknown ({languageID})"
+        };
     }
 
     private void UpdateCountsAndExport(PokeTradeDetail<PB7> poke, PB7 received, PB7 toSend)
@@ -489,8 +532,7 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
         await Task.Delay(10_000, token);
         var offereddatac = await SwitchConnection.ReadBytesAsync(OfferedPokemon, 0x104, token);
         var offeredpbmc = new PB7(offereddatac);
-        List<PB7> clonelist = new();
-        clonelist.Add(offeredpbmc);
+        List<PB7> clonelist = [offeredpbmc];
         detail.SendNotification(this, $"You added {(Species)offeredpbmc.Species} to the clone list");
 
         for (int i = 0; i < 6; i++)
@@ -662,7 +704,7 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
     {
         if (poke.LGPETradeCode == null || !poke.LGPETradeCode.Any())
         {
-            poke.LGPETradeCode = new List<Pictocodes> { Pictocodes.Pikachu, Pictocodes.Pikachu, Pictocodes.Pikachu };
+            poke.LGPETradeCode = [Pictocodes.Pikachu, Pictocodes.Pikachu, Pictocodes.Pikachu];
             Log($"Using default trade code: {string.Join(", ", poke.LGPETradeCode)}");
         }
         else
@@ -806,31 +848,27 @@ public class PokeTradeBotLGPE(PokeTradeHub<PB7> Hub, PokeBotState Config) : Poke
         if (tradeDetails != null)
         {
             var cln = toSend.Clone();
-
-            // Check if user explicitly set a language
-            int userLanguage = toSend.Language;
-            int configLanguage = (int)Hub.Config.Legality.GenerateLanguage;
-            bool userSetLanguage = userLanguage != configLanguage;
-
-            // Get language-appropriate OT name if user set a specific language
-            string otName = tradeDetails.OT ?? string.Empty;
-            if (userSetLanguage)
-            {
-                var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.GE, 7, lang: (LanguageID)userLanguage);
-                otName = langTrainerInfo.OT;
-                Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
-            }
-
-#pragma warning disable CS8601 // Possible null reference assignment.
-            cln.OriginalTrainerName = otName;
-#pragma warning restore CS8601 // Possible null reference assignment.
+            
+            if (!string.IsNullOrEmpty(tradeDetails.OT))
+                cln.OriginalTrainerName = tradeDetails.OT;
             cln.SetDisplayTID((uint)tradeDetails.TID);
             cln.SetDisplaySID((uint)tradeDetails.SID);
 
-            // Only override language if user didn't explicitly set one
-            if (!userSetLanguage)
+            // Set gender if available
+            if (tradeDetails.Gender.HasValue)
             {
-                cln.Language = (int)LanguageID.English; // Set the appropriate language ID
+                cln.OriginalTrainerGender = tradeDetails.Gender.Value;
+            }
+
+            // Set language if available
+            if (tradeDetails.Language.HasValue)
+            {
+                cln.Language = tradeDetails.Language.Value;
+                Log($"Setting Pokémon language to: {GetLanguageName(tradeDetails.Language.Value)}");
+            }
+            else
+            {
+                cln.Language = (int)LanguageID.English; // Default fallback
             }
 
             ClearOTTrash(cln, tradeDetails);

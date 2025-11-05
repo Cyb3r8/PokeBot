@@ -1,6 +1,5 @@
 > [!IMPORTANT]  
-> Legends Z-A release coming soon!  See a working bot in action on discord.gg/genpkm
-> Expect public release after next PKHeX update when all the issues are fixed. 
+> Legends Z-A Release is Here! Join our discord! discord.gg/pokemonhideout
 
 
 # Project PokeBot

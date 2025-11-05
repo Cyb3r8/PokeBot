@@ -56,52 +56,90 @@ public sealed record TradeQueueInfo<T>(PokeTradeHub<T> Hub)
     {
         lock (_sync)
         {
+            // First, try to find the trade in UsersInQueue (more reliable for recently added trades)
+            var tradeEntry = UsersInQueue.FirstOrDefault(z => z.UserID == uid && z.UniqueTradeID == uniqueTradeID);
+            
+            // Try to find the trade in the queue system
             var allTrades = Hub.Queues.AllQueues.SelectMany(q => q.Queue.Select(x => x.Value)).ToList();
-
-            // Find the specific trade
             var index = allTrades.FindIndex(z => z.Trainer.ID == uid && z.UniqueTradeID == uniqueTradeID);
-            if (index < 0)
-                return QueueCheckResult<T>.None;
-
-            var entry = allTrades[index];
-
-            // Count total trades accounting for batch trades
-            int totalTradesAhead = 0;
-            int processingCount = 0;
-
-            for (int i = 0; i < allTrades.Count; i++)
+            
+            if (index >= 0)
             {
-                var trade = allTrades[i];
+                // Trade found in queue - use queue-based position calculation
+                var entry = allTrades[index];
 
-                // Count processing trades
-                if (trade.IsProcessing)
+                // Count total trades accounting for batch trades
+                int totalTradesAhead = 0;
+                int processingCount = 0;
+
+                for (int i = 0; i < allTrades.Count; i++)
                 {
-                    processingCount++;
-                    continue;
+                    var trade = allTrades[i];
+
+                    // Count processing trades
+                    if (trade.IsProcessing)
+                    {
+                        processingCount++;
+                        continue;
+                    }
+
+                    // For trades ahead of us, count their actual trade count
+                    if (i < index)
+                    {
+                        if (trade.TotalBatchTrades > 1 && trade.BatchTrades != null)
+                            totalTradesAhead += trade.BatchTrades.Count;
+                        else
+                            totalTradesAhead += 1;
+                    }
                 }
 
-                // For trades ahead of us, count their actual trade count
-                if (i < index)
+                // Calculate actual position
+                var actualIndex = totalTradesAhead + 1 + processingCount;
+
+                // Calculate total trades in queue
+                var totalInQueue = allTrades.Sum(trade =>
                 {
                     if (trade.TotalBatchTrades > 1 && trade.BatchTrades != null)
-                        totalTradesAhead += trade.BatchTrades.Count;
+                        return trade.BatchTrades.Count;
+                    return 1;
+                }) + processingCount;
+
+                // Use tradeEntry if available, otherwise create new one
+                var resultEntry = tradeEntry ?? new TradeEntry<T>(entry, uid, type, entry.Trainer.TrainerName, uniqueTradeID);
+                return new QueueCheckResult<T>(true, resultEntry, actualIndex, totalInQueue, entry.BatchTradeNumber, entry.TotalBatchTrades);
+            }
+            else if (tradeEntry != null)
+            {
+                // Trade found in UsersInQueue but not in queue yet - calculate position based on UsersInQueue order
+                var userIndex = UsersInQueue.FindIndex(z => z.UserID == uid && z.UniqueTradeID == uniqueTradeID);
+                
+                // Count trades ahead in UsersInQueue
+                int totalTradesAhead = 0;
+                for (int i = 0; i < userIndex; i++)
+                {
+                    var entry = UsersInQueue[i];
+                    if (entry.Trade.TotalBatchTrades > 1 && entry.Trade.BatchTrades != null)
+                        totalTradesAhead += entry.Trade.BatchTrades.Count;
                     else
                         totalTradesAhead += 1;
                 }
+
+                // Count processing trades
+                int processingCount = UsersInQueue.Count(z => z.Trade.IsProcessing);
+
+                var actualIndex = totalTradesAhead + 1 + processingCount;
+                var totalInQueue = UsersInQueue.Sum(entry =>
+                {
+                    if (entry.Trade.TotalBatchTrades > 1 && entry.Trade.BatchTrades != null)
+                        return entry.Trade.BatchTrades.Count;
+                    return 1;
+                }) + processingCount;
+
+                return new QueueCheckResult<T>(true, tradeEntry, actualIndex, totalInQueue, tradeEntry.Trade.BatchTradeNumber, tradeEntry.Trade.TotalBatchTrades);
             }
-
-            // Calculate actual position
-            var actualIndex = totalTradesAhead + 1 + processingCount;
-
-            // Calculate total trades in queue
-            var totalInQueue = allTrades.Sum(trade =>
-            {
-                if (trade.TotalBatchTrades > 1 && trade.BatchTrades != null)
-                    return trade.BatchTrades.Count;
-                return 1;
-            }) + processingCount;
-
-            return new QueueCheckResult<T>(true, new TradeEntry<T>(entry, uid, type, entry.Trainer.TrainerName, uniqueTradeID), actualIndex, totalInQueue);
+            
+            // Trade not found anywhere
+            return QueueCheckResult<T>.None;
         }
     }
 

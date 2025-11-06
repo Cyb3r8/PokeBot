@@ -52,12 +52,17 @@ public abstract class PokeRoutineExecutor9PLZA : PokeRoutineExecutor<PA9>
         if (Offsets.MyStatusPointer[0] == 0)
             return sav;
 
-        var info = sav.MyStatus;
-        var read = await SwitchConnection.PointerPeek(info.Data.Length, Offsets.MyStatusPointer, token).ConfigureAwait(false);
+        var myStatus = new TradeMyStatusPLZA();
+        var read = await SwitchConnection.PointerPeek(myStatus.Data.Length, Offsets.MyStatusPointer, token).ConfigureAwait(false);
+        read.CopyTo(myStatus.Data, 0);
 
-        byte[] dataBytes = new byte[info.Data.Length];
-        Array.Copy(read, dataBytes, info.Data.Length);
-        dataBytes.CopyTo(info.Data);
+        // Manually populate the SAV with data from our correctly-structured MyStatus
+        sav.Language = myStatus.Language;
+        sav.OT = myStatus.OT;
+        sav.DisplayTID = myStatus.DisplayTID;
+        sav.DisplaySID = myStatus.DisplaySID;
+        sav.Gender = (byte)myStatus.Gender;
+        sav.Version = (GameVersion)myStatus.Game;
 
         return sav;
     }
@@ -89,10 +94,10 @@ public abstract class PokeRoutineExecutor9PLZA : PokeRoutineExecutor<PA9>
         return ptr;
     }
 
-    public async Task<TradeMyStatusPLZA> GetTradePartnerMyStatus(IReadOnlyList<long> jumps, CancellationToken token)
+    public async Task<TradePartnerStatusPLZA> GetTradePartnerStatus(IReadOnlyList<long> jumps, CancellationToken token)
     {
         var finalAddr = await ResolvePointer(jumps, token, derefAll: false).ConfigureAwait(false);
-        var info = new TradeMyStatusPLZA();
+        var info = new TradePartnerStatusPLZA();
         var read = await SwitchConnection.ReadBytesAbsoluteAsync(finalAddr, info.Data.Length, token).ConfigureAwait(false);
         read.CopyTo(info.Data, 0);
         return info;

@@ -4,22 +4,18 @@ using System.Buffers.Binary;
 
 namespace SysBot.Pokemon;
 
-public sealed class TradePartnerPLZA(TradeMyStatusPLZA Info)
+// TradePartnerPLZA - wrapper for trade partner data during trade session
+public sealed class TradePartnerPLZA(TradePartnerStatusPLZA info)
 {
-    public int Game { get; } = Info.Game;
-
-    public int Gender { get; } = Info.Gender;
-
-    public int Language { get; } = Info.Language;
-
-    public string SID7 { get; } = Info.DisplaySID.ToString("D4");
-
-    public string TID7 { get; } = Info.DisplayTID.ToString("D6");
-
-    public string TrainerName { get; } = Info.OT;
+    public int Game { get; } = info.Game;
+    public int Gender { get; } = info.Gender;
+    public int Language { get; } = info.Language;
+    public string SID7 { get; } = info.DisplaySID.ToString("D4");
+    public string TID7 { get; } = info.DisplayTID.ToString("D6");
+    public string TrainerName { get; } = info.OT;
 }
 
-// Trade session structure from trade partner (48 bytes)
+// Bot's own MyStatus structure (save file, 48 bytes)
 // Based on PKHeX MyStatus9a structure:
 // 0x00: ID32 (TID+SID), 0x04: Game, 0x05: Gender, 0x07: Language, 0x10: OT Name
 public sealed class TradeMyStatusPLZA
@@ -37,4 +33,24 @@ public sealed class TradeMyStatusPLZA
     public int Language => Data[0x07];
 
     public string OT => StringConverter8.GetString(Data.AsSpan(0x10, 0x1A));
+}
+
+// Trade partner status structure during trade session (48 bytes)
+// This has DIFFERENT offsets than MyStatus9a when reading from Trader1MyStatusPointer:
+// 0x00: ID32 (TID+SID), 0x04: Gender, 0x05: Language, 0x08: OT Name
+public sealed class TradePartnerStatusPLZA
+{
+    public readonly byte[] Data = new byte[0x30];
+
+    public uint DisplaySID => BinaryPrimitives.ReadUInt32LittleEndian(Data.AsSpan(0)) / 1_000_000;
+
+    public uint DisplayTID => BinaryPrimitives.ReadUInt32LittleEndian(Data.AsSpan(0)) % 1_000_000;
+
+    public int Game => 52; // PLZA game version
+
+    public int Gender => Data[0x04];
+
+    public int Language => Data[0x05];
+
+    public string OT => StringConverter8.GetString(Data.AsSpan(0x08, 0x1A));
 }

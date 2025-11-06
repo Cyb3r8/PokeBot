@@ -224,7 +224,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
     #region AutoOT Features
 
-    private static void ApplyTrainerInfo(PA9 pokemon, TradeMyStatusPLZA partner)
+    private static void ApplyTrainerInfo(PA9 pokemon, TradePartnerStatusPLZA partner)
     {
         pokemon.OriginalTrainerGender = (byte)partner.Gender;
         pokemon.TrainerTID7 = (uint)Math.Abs(partner.DisplayTID);
@@ -232,7 +232,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         pokemon.OriginalTrainerName = partner.OT;
     }
 
-    private async Task<PA9> ApplyAutoOT(PA9 toSend, TradeMyStatusPLZA tradePartner, SAV9ZA sav, CancellationToken token)
+    private async Task<PA9> ApplyAutoOT(PA9 toSend, TradePartnerStatusPLZA tradePartner, SAV9ZA sav, CancellationToken token)
     {
         // Sanity check: if trade partner OT is empty, skip AutoOT
         if (string.IsNullOrWhiteSpace(tradePartner.OT))
@@ -318,7 +318,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         }
     }
 
-    private static void ClearOTTrash(PA9 pokemon, TradeMyStatusPLZA tradePartner)
+    private static void ClearOTTrash(PA9 pokemon, TradePartnerStatusPLZA tradePartner)
     {
         Span<byte> trash = pokemon.OriginalTrainerTrash;
         trash.Clear();
@@ -612,12 +612,12 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
     #region Game State & Data Access
 
-    private async Task<TradeMyStatusPLZA> GetTradePartnerFullInfo(CancellationToken token)
+    private async Task<TradePartnerStatusPLZA> GetTradePartnerFullInfo(CancellationToken token)
     {
-        // We're able to see both users' MyStatus, but one of them will be ourselves.
-            var trader_info = await GetTradePartnerMyStatus(Offsets.Trader1MyStatusPointer, token).ConfigureAwait(false);
-                return trader_info;
-            }
+        // Read trade partner status data (uses different offsets than bot's own MyStatus)
+        var trader_info = await GetTradePartnerStatus(Offsets.Trader1MyStatusPointer, token).ConfigureAwait(false);
+        return trader_info;
+    }
 
     private async Task<ulong> GetBoxStartOffset(CancellationToken token)
     {
@@ -745,7 +745,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         var totalBatchTrades = tradesToProcess.Count;
 
         // Cache trade partner info after first successful connection
-        TradeMyStatusPLZA? cachedTradePartnerInfo = null;
+        TradePartnerStatusPLZA? cachedTradePartnerInfo = null;
 
         void SendCollectedPokemonAndCleanup()
         {

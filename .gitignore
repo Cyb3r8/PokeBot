@@ -359,3 +359,5 @@ MigrationBackup/
 
 # Twitch
 /Twitch_old/*
+
+/Config_files/

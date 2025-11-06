@@ -16,7 +16,7 @@ public class PokeDataOffsetsPLZA
 
     public const string PLZAID = "0100F43008C44000";
 
-    public const string PLZAGameVersion = "1.0.1";
+    public const string PLZAGameVersion = "1.0.2";
 
     // ✅ VERIFIED - Box 1 Slot 1 Pokemon data
     // Successfully tested with Pokemon injection/reading

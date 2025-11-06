@@ -1,5 +1,5 @@
 > [!IMPORTANT]  
-> Legends Z-A Release is Here! Join our discord! discord.gg/pokemonhideout
+> Legends Z-A Release is Here! Join our discord! [Pokémon Hideout](discord.gg/pokemonhideout)
 
 
 # Project PokeBot
@@ -12,7 +12,7 @@
 
 For support on setting up your own instance of PokeBot, feel free to join the discord!
 
-[<img src="https://canary.discordapp.com/api/guilds/1369342739581505536/widget.png?style=banner2">](https://discord.gg/WRs22V6DgE)
+[<img src="https://canary.discordapp.com/api/guilds/1369342739581505536/widget.png?style=banner2">](https://discord.gg/DXRXBQDRc6)
 
 [sys-botbase](https://github.com/olliz0r/sys-botbase) client for remote control automation of Nintendo Switch consoles.
 

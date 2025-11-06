@@ -783,43 +783,17 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         {
             var currentTradeIndex = i;
             var toSend = tradesToProcess[currentTradeIndex];
+            ulong boxOffset;
 
             poke.TradeData = toSend;
             poke.Notifier.UpdateBatchProgress(currentTradeIndex + 1, toSend, poke.UniqueTradeID);
 
-            // For subsequent trades (after first), prepare the next Pokemon
-            ulong boxOffset;
+            // For subsequent trades (after first), we've already prepared the Pokemon during the previous trade animation
+            // No need to prepare here - just send notification
             if (currentTradeIndex > 0)
             {
-                poke.SendNotification(this, $"Trade {completedTrades} completed! **DO NOT OFFER YET** - Preparing your next Pokémon ({completedTrades + 1}/{totalBatchTrades})...");
-
-                // Wait for trade animation to fully complete
-                await Task.Delay(5_000, token).ConfigureAwait(false);
-
-                // Prepare the next Pokemon with AutoOT if needed
-                if (toSend.Species != 0)
-                {
-                    if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && PokeBot.CanUseAutoOT(poke) && cachedTradePartnerInfo != null)
-                    {
-                        toSend = await ApplyAutoOT(toSend, cachedTradePartnerInfo, sav, token);
-                        tradesToProcess[currentTradeIndex] = toSend; // Update the list
-                    }
-                    else
-                    {
-                        // AutoOT not applied, inject directly
-                        boxOffset = await GetBoxStartOffset(token).ConfigureAwait(false);
-                        await SetBoxPokemonAbsolute(boxOffset, toSend, token, sav).ConfigureAwait(false);
-                    }
-                }
-
-                // Give game time to refresh trade offer display with injected Pokemon
-                await Task.Delay(3_000, token).ConfigureAwait(false);
-
-                // NOW tell the user they can offer
                 poke.SendNotification(this, $"**Ready!** You can now offer your Pokémon for trade {currentTradeIndex + 1}/{totalBatchTrades}.");
-
-                // Additional delay to ensure we're ready to detect offers
-                await Task.Delay(5_000, token).ConfigureAwait(false);
+                await Task.Delay(2_000, token).ConfigureAwait(false);
             }
 
             // For first trade only - search for partner
@@ -1035,7 +1009,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                 return PokeTradeResult.RoutineCancel;
             }
 
-            // CRITICAL: Verify that Box 1 Slot 1 actually changed (trade occurred)
+            // Read received Pokemon immediately after trade completes, before injecting next Pokemon
             boxOffset = await GetBoxStartOffset(token).ConfigureAwait(false);
             var received = await ReadPokemon(boxOffset, BoxFormatSlotSize, token).ConfigureAwait(false);
             var checksumAfterBatchTrade = received.Checksum;
@@ -1051,6 +1025,32 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
             }
 
             Log($"Trade {currentTradeIndex + 1}/{totalBatchTrades} complete! Received {(Species)received.Species}.");
+
+            // NOW prepare and inject the next Pokemon (after we've read what we received)
+            if (currentTradeIndex + 1 < totalBatchTrades)
+            {
+                Log($"Preparing next Pokémon ({currentTradeIndex + 2}/{totalBatchTrades})...");
+
+                var nextTradeIndex = currentTradeIndex + 1;
+                var nextToSend = tradesToProcess[nextTradeIndex];
+
+                if (nextToSend.Species != 0)
+                {
+                    if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && PokeBot.CanUseAutoOT(poke) && cachedTradePartnerInfo != null)
+                    {
+                        nextToSend = await ApplyAutoOT(nextToSend, cachedTradePartnerInfo, sav, token);
+                        tradesToProcess[nextTradeIndex] = nextToSend; // Update the list
+                    }
+                    else
+                    {
+                        // AutoOT not applied, inject directly
+                        var nextBoxOffset = await GetBoxStartOffset(token).ConfigureAwait(false);
+                        await SetBoxPokemonAbsolute(nextBoxOffset, nextToSend, token, sav).ConfigureAwait(false);
+                    }
+                }
+
+                Log($"Next Pokémon prepared and injected!");
+            }
 
             UpdateCountsAndExport(poke, received, toSend);
 
@@ -1108,9 +1108,12 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                 break;
             }
 
-            // Prepare for next trade - wait a moment before continuing
-            Log($"Preparing for next trade ({currentTradeIndex + 2}/{totalBatchTrades})...");
-            await Task.Delay(2_000, token).ConfigureAwait(false);
+            // Next trade is already prepared - give game a moment to refresh the UI
+            if (currentTradeIndex + 1 < totalBatchTrades)
+            {
+                Log($"Ready for next trade ({currentTradeIndex + 2}/{totalBatchTrades})...");
+                await Task.Delay(2_000, token).ConfigureAwait(false);
+            }
         }
 
         // Ensure we exit properly even if the loop breaks unexpectedly

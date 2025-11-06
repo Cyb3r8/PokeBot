@@ -1,7 +1,6 @@
 using PKHeX.Core;
 using PKHeX.Core.AutoMod;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using static SysBot.Pokemon.TradeSettings;
@@ -347,7 +346,18 @@ public abstract class TradeExtensions<T> where T : PKM, new()
             else if (ribbonSetMark.RibbonMarkAlpha)
             {
                 result = RibbonIndex.MarkAlpha;
-                markTitle = " The Former Alpha";
+
+                // For PA9 (PLZA), check if the Pokemon is native to determine the correct title
+                if (pk is PA9 pa9)
+                {
+                    var la = new LegalityAnalysis(pa9);
+                    bool isNative = la.EncounterOriginal.Context == pa9.Context;
+                    markTitle = isNative ? " The Alpha" : " The Former Alpha";
+                }
+                else
+                {
+                    markTitle = " The Former Alpha";
+                }
                 return true;
             }
             else if (ribbonSetMark.RibbonMarkTitan)

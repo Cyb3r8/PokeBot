@@ -457,7 +457,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                     return false;
                 }
             }
-            await Task.Delay(8_000, token).ConfigureAwait(false);
+            await Task.Delay(8_000 + Hub.Config.Timings.ExtraTimeConnectOnline, token).ConfigureAwait(false);
             Log("Connected online.");
 
             await Click(A, 1_000, token).ConfigureAwait(false);

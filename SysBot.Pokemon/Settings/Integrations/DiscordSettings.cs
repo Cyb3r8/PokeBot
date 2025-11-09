@@ -69,6 +69,9 @@ public class DiscordSettings
     [Category(Users), Description("Disabling this will remove global sudo support.")]
     public bool AllowGlobalSudo { get; set; } = true;
 
+    [Category(Channels), Description("User ID or Channel ID to forward bot DMs to. Leave empty to disable.")]
+    public string UserDMsToBotForwarder { get; set; } = string.Empty;
+
     [Category(Channels), Description("Channels that will log special messages, like announcements.")]
     public RemoteControlAccessList AnnouncementChannels { get; set; } = new();
 

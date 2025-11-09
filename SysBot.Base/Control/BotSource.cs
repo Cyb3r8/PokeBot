@@ -96,7 +96,7 @@ public class BotSource<T>(RoutineExecutor<T> Bot)
             return;
         }
 
-        LogUtil.LogError("Bot has crashed!", ident);
+        LogUtil.LogError("Bot has crashed! <@105859940148609024> & <@105859940148609024>", ident);
 
         if (!string.IsNullOrEmpty(ae.Message))
             LogUtil.LogError("Aggregate message: " + ae.Message, ident);

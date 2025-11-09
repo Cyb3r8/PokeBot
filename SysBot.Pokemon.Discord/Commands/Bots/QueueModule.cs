@@ -85,6 +85,7 @@ public class QueueModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
     [Command("deleteTradeCode")]
     [Alias("dtc")]
     [Summary("Deletes the stored trade code for the user.")]
+    [RequireSudo]
     public async Task DeleteTradeCodeAsync()
     {
         var userID = Context.User.Id;

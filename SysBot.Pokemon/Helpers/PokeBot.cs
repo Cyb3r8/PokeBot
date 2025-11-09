@@ -8,7 +8,7 @@ namespace SysBot.Pokemon;
 
 public static class PokeBot
 {
-    public const string Attribution = "https://github.com/Taku1991/PokeBot";
+    public const string Attribution = "https://github.com/Cyb3r8/PokeBot";
 
     public const string ConfigPath = "config.json";
 

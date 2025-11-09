@@ -16,9 +16,9 @@ namespace SysBot.Pokemon.Discord;
 // Copyright 2017, Christopher F. <foxbot@protonmail.com>
 public class InfoModule : ModuleBase<SocketCommandContext>
 {
-    private const string detail = "I am an open-source Pokemon Trading Discord bot developed by hexbyt3. Forked by Taku1991.";
+    private const string detail = "I am an open-source Pokemon Trading Discord bot developed by hexbyt3. Forked by Cyb3r";
 
-    private const string repo = "https://github.com/Taku1991/PokeBot";
+    private const string repo = "https://github.com/Cyb3r8/PokeBot";
 
     [Command("info")]
     [Alias("about", "whoami", "owner")]

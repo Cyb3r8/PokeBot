@@ -32,6 +32,8 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
     private bool StartFromOverworld = true;
     private ulong? _cachedBoxOffset; // Cache to reduce repeated pointer dereferencing
     private ulong TradePartnerOfferedOffset; // Offset to trade partner's offered Pokemon data
+    private bool _wasConnectedToPartner = false; // Track if we were connected to a partner before restart
+    private int _consecutiveConnectionFailures = 0; // Track consecutive online connection failures for soft ban detection
 
     public event EventHandler<Exception>? ConnectionError;
 
@@ -63,6 +65,8 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         {
             // Ensure cache is clean on startup
             _cachedBoxOffset = null;
+            _wasConnectedToPartner = false;
+            _consecutiveConnectionFailures = 0;
 
             Hub.Queues.Info.CleanStuckTrades();
             await InitializeHardware(Hub.Config.Trade, token).ConfigureAwait(false);
@@ -209,6 +213,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
             if (await CheckIfInTradeBox(token).ConfigureAwait(false))
             {
                 Log("Trade partner detected!");
+                _wasConnectedToPartner = true; // Mark that we've connected to a partner
                 return TradePartnerWaitResult.Success;
             }
 
@@ -426,7 +431,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         if (!await CheckIfOnOverworld(token).ConfigureAwait(false))
             await RecoverToOverworld(token).ConfigureAwait(false);
 
-        await Click(X, 3_000, token).ConfigureAwait(false); // Load Menu
+        await Click(X, 3_000, token).ConfigureAwait(false);
 
         await Click(DUP, 1_000, token).ConfigureAwait(false);
         await Click(A, 2_000, token).ConfigureAwait(false);
@@ -442,6 +447,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
             await Click(A, 1_000, token).ConfigureAwait(false);
             await Click(A, 1_000, token).ConfigureAwait(false);
             await Task.Delay(1_000, token).ConfigureAwait(false);
+            _consecutiveConnectionFailures = 0;
         }
         else
         {
@@ -453,12 +459,23 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                 await Task.Delay(1_000, token).ConfigureAwait(false);
                 if (++attempts > 30)
                 {
-                    Log("Failed to connect online.");
+                    _consecutiveConnectionFailures++;
+                    Log($"Failed to connect online. Consecutive failures: {_consecutiveConnectionFailures}");
+
+                    if (_consecutiveConnectionFailures >= 3)
+                    {
+                        Log("Soft ban detected (3 consecutive connection failures). Waiting 30 minutes...");
+                        await Task.Delay(30 * 60 * 1000, token).ConfigureAwait(false);
+                        Log("30 minute wait complete. Resuming operations.");
+                        _consecutiveConnectionFailures = 0;
+                    }
+
                     return false;
                 }
             }
             await Task.Delay(8_000 + Hub.Config.Timings.ExtraTimeConnectOnline, token).ConfigureAwait(false);
             Log("Connected online.");
+            _consecutiveConnectionFailures = 0;
 
             await Click(A, 1_000, token).ConfigureAwait(false);
             await Click(A, 1_000, token).ConfigureAwait(false);
@@ -527,6 +544,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         if (await CheckIfOnOverworld(token).ConfigureAwait(false))
         {
             StartFromOverworld = true;
+            _wasConnectedToPartner = false; // Reset flag when successfully back to overworld
             return;
         }
 
@@ -546,6 +564,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                 {
                     Log("Returned to overworld.");
                     StartFromOverworld = true;
+                    _wasConnectedToPartner = false; // Reset flag when successfully back to overworld
                     return;
                 }
 
@@ -573,6 +592,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
                 {
                     Log("Returned to overworld.");
                     StartFromOverworld = true;
+                    _wasConnectedToPartner = false; // Reset flag when successfully back to overworld
                     return;
                 }
 
@@ -1622,6 +1642,140 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
     {
         await ReOpenGame(Hub.Config, token).ConfigureAwait(false);
         _cachedBoxOffset = null; // Invalidate box offset cache after restart
+
+        // If we were connected to a partner before restart, prevent soft ban
+        if (_wasConnectedToPartner)
+        {
+            Log("Preventing trade soft ban - connecting with random partner to clear trade state...");
+            await PreventTradeSoftBan(token).ConfigureAwait(false);
+            _wasConnectedToPartner = false; // Reset the flag after recovery
+        }
+    }
+
+    /// <summary>
+    /// Prevents trade soft ban after restarting during an active trade connection.
+    ///
+    /// When the bot restarts AFTER successfully connecting to a trade partner (verified via NID or TradeBoxStatusPointer),
+    /// the game may impose a soft ban if we attempt to trade again without clearing the previous connection state.
+    ///
+    /// This method connects to a random partner (no code) and immediately disconnects using B+A to signal
+    /// to the game servers that the previous trade session has ended, preventing the soft ban.
+    /// </summary>
+    private async Task PreventTradeSoftBan(CancellationToken token)
+    {
+        await Task.Delay(5_000, token).ConfigureAwait(false);
+
+        if (!await CheckIfOnOverworld(token).ConfigureAwait(false))
+        {
+            Log("Not on overworld after restart, attempting recovery...");
+            await RecoverToOverworld(token).ConfigureAwait(false);
+        }
+
+        Log("Connecting online to prevent trade soft ban...");
+        await Click(X, 3_000, token).ConfigureAwait(false);
+        await Click(DUP, 1_000, token).ConfigureAwait(false);
+        await Click(A, 2_000, token).ConfigureAwait(false);
+        await Click(DRIGHT, 1_000, token).ConfigureAwait(false);
+        await Click(DRIGHT, 1_000, token).ConfigureAwait(false);
+        await Click(A, 1_000, token).ConfigureAwait(false);
+        await Click(DRIGHT, 1_000, token).ConfigureAwait(false);
+        await Click(A, 1_000, token).ConfigureAwait(false);
+
+        int attempts = 0;
+        while (!await CheckIfConnectedOnline(token).ConfigureAwait(false))
+        {
+            await Task.Delay(1_000, token).ConfigureAwait(false);
+            if (++attempts > 30)
+            {
+                Log("Failed to connect online during soft ban prevention.");
+                await RecoverToOverworld(token).ConfigureAwait(false);
+                return;
+            }
+        }
+        await Task.Delay(8_000 + Hub.Config.Timings.ExtraTimeConnectOnline, token).ConfigureAwait(false);
+        Log("Connected online for soft ban prevention.");
+
+        await Click(A, 1_000, token).ConfigureAwait(false);
+        await Click(A, 1_000, token).ConfigureAwait(false);
+        await Task.Delay(3_000, token).ConfigureAwait(false);
+
+        Log("Connecting with random partner to clear previous trade session...");
+        await Click(PLUS, 2_000, token).ConfigureAwait(false);
+
+        Log("Waiting for random partner to connect...");
+        await Task.Delay(3_000, token).ConfigureAwait(false);
+
+        int waitAttempts = 0;
+        bool connected = false;
+        while (waitAttempts < 30 && !connected)
+        {
+            var nid = await GetTradePartnerNID(Offsets.LinkTradePartnerNIDPointer, token).ConfigureAwait(false);
+            if (nid != 0)
+            {
+                Log("Random partner connected via NID. Disconnecting to complete soft ban prevention...");
+                connected = true;
+                break;
+            }
+
+            if (await CheckIfInTradeBox(token).ConfigureAwait(false))
+            {
+                Log("Random partner connected via TradeBox. Disconnecting to complete soft ban prevention...");
+                connected = true;
+                break;
+            }
+
+            await Task.Delay(1_000, token).ConfigureAwait(false);
+            waitAttempts++;
+        }
+
+        if (!connected)
+        {
+            Log("No random partner found within 30s timeout. Soft ban may not be fully prevented. Continuing...");
+            await RecoverToOverworld(token).ConfigureAwait(false);
+            return;
+        }
+
+        Log("Disconnecting from random partner (B to cancel, A to confirm)...");
+        await Click(B, 1_000, token).ConfigureAwait(false);
+        await Click(A, 1_000, token).ConfigureAwait(false);
+
+        Log("Waiting for partner disconnect confirmation...");
+        int disconnectAttempts = 0;
+        bool partnerDisconnected = false;
+        while (disconnectAttempts < 10 && !partnerDisconnected)
+        {
+            await Task.Delay(500, token).ConfigureAwait(false);
+            var currentNid = await GetTradePartnerNID(Offsets.LinkTradePartnerNIDPointer, token).ConfigureAwait(false);
+            if (currentNid == 0)
+            {
+                Log("Partner disconnected (NID = 0). Exiting to overworld...");
+                partnerDisconnected = true;
+                break;
+            }
+            disconnectAttempts++;
+        }
+
+        if (!partnerDisconnected)
+        {
+            Log("Partner did not disconnect within timeout. Forcing exit...");
+        }
+
+        Log("Spamming B to return to overworld...");
+        for (int i = 0; i < 15; i++)
+        {
+            await Click(B, 1_000, token).ConfigureAwait(false);
+
+            if (await CheckIfOnOverworld(token).ConfigureAwait(false))
+            {
+                Log("Soft ban prevention complete. Successfully returned to overworld.");
+                StartFromOverworld = true;
+                return;
+            }
+        }
+
+        Log("Failed to return to overworld after B spam. Performing full recovery...");
+        await RecoverToOverworld(token).ConfigureAwait(false);
+        StartFromOverworld = true;
     }
 
     #endregion

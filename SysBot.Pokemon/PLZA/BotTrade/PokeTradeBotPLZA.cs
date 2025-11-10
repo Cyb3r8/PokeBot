@@ -1401,23 +1401,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
             return partnerCheck;
         }
 
-        // Clone and Dump commands are currently disabled for PLZA due to bugs
-        if (poke.Type == PokeTradeType.Clone)
-        {
-            poke.SendNotification(this, "Clone trades are currently disabled for Legends Z-A. Please try again later.");
-            await ExitTradeToOverworld(false, token).ConfigureAwait(false);
-            return PokeTradeResult.TrainerRequestBad;
-        }
-
-        if (poke.Type == PokeTradeType.Dump)
-        {
-            poke.SendNotification(this, "Dump trades are currently disabled for Legends Z-A. Please try again later.");
-            await ExitTradeToOverworld(false, token).ConfigureAwait(false);
-            return PokeTradeResult.TrainerRequestBad;
-        }
-
-        /*
-        // NOTE: Clone functionality may need to be removed in future updates if it becomes an issue with legality checks
+        // Clone and Dump functionality
         if (poke.Type == PokeTradeType.Clone)
         {
             var (result, clone) = await ProcessCloneTradeAsync(poke, partnerOfferedBaseline, sav, token).ConfigureAwait(false);
@@ -1430,11 +1414,10 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
         if (poke.Type == PokeTradeType.Dump)
         {
-            var result = await ProcessDumpTradeAsync(poke, token).ConfigureAwait(false);
+            poke.SendNotification(this, "Dump trades are currently disabled for Legends Z-A. Please try again later.");
             await ExitTradeToOverworld(false, token).ConfigureAwait(false);
-            return result;
+            return PokeTradeResult.TrainerRequestBad;
         }
-        */
 
         if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && PokeBot.CanUseAutoOT(poke))
         {
@@ -1825,11 +1808,8 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         }
     }
 
-    #region Disabled Features (Clone & Dump)
-    // These features are currently disabled due to bugs
-    // Uncomment and fix when ready to re-enable
+    #region Clone & Dump Features
 
-    /*
     private async Task<(PokeTradeResult Result, PA9? ClonedPokemon)> ProcessCloneTradeAsync(PokeTradeDetail<PA9> poke, byte[] partnerOfferedBaseline, SAV9ZA sav, CancellationToken token)
     {
         poke.SendNotification(this, "Please offer the Pokémon you want me to clone!");
@@ -1878,6 +1858,27 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         if (Hub.Config.Legality.ResetHOMETracker)
             clone.Tracker = 0;
 
+        // Regenerate PID to avoid duplicate PIDs (fixes legality check issue)
+        // Each cloned Pokemon needs a unique PID to pass PKHeX legality checks
+        clone.PID = Util.Rand32();
+
+        // If the original was shiny, ensure the clone remains shiny with the same shiny type
+        if (offered.IsShiny)
+        {
+            // Preserve shiny type (square vs star shiny)
+            var shinyType = offered.ShinyXor == 0 ? Shiny.AlwaysSquare : Shiny.AlwaysStar;
+            CommonEdits.SetShiny(clone, shinyType);
+        }
+
+        // If the original was alpha, ensure the clone remains alpha
+        if (offered.IsAlpha)
+        {
+            clone.IsAlpha = true;
+        }
+
+        // Refresh checksum after PID and alpha changes
+        clone.RefreshChecksum();
+
         // Put the cloned Pokemon in our trade box
         Log($"Cloning {GameInfo.GetStrings("en").Species[clone.Species]}...");
         var boxOffset = await GetBoxStartOffset(token).ConfigureAwait(false);
@@ -1907,7 +1908,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
         // Read their new offered Pokemon
         var pk2 = await ReadUntilPresent(TradePartnerOfferedOffset, 25_000, 1_000, BoxFormatSlotSize, token).ConfigureAwait(false);
-        if (!partnerChanged || pk2 is null || SearchUtil.HashByDetails(pk2) == SearchUtil.HashByDetails(offered))
+        if (!partnerChanged || pk2 is null || pk2.EncryptionConstant == offered.EncryptionConstant)
         {
             Log("Trade partner did not change their Pokémon.");
             await ExitTradeToOverworld(false, token).ConfigureAwait(false);
@@ -1918,6 +1919,8 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
         return (PokeTradeResult.Success, clone);
     }
 
+    /*
+    // Dump functionality is currently disabled
     private async Task<PokeTradeResult> ProcessDumpTradeAsync(PokeTradeDetail<PA9> detail, CancellationToken token)
     {
         int ctr = 0;

@@ -183,11 +183,18 @@ public static class Helpers<T> where T : PKM, new()
 
         var template = AutoLegalityWrapper.GetTemplate(set);
 
-        if (set.InvalidLines.Count != 0)
+        // Filter out batch commands (.) and filters (~) from invalid lines - these are handled by ALM
+        var actualInvalidLines = set.InvalidLines.Where(line =>
+        {
+            var text = line.Value?.Trim();
+            return !string.IsNullOrEmpty(text) && !text.StartsWith('.') && !text.StartsWith('~');
+        }).ToList();
+
+        if (actualInvalidLines.Count != 0)
         {
             return Task.FromResult(new ProcessedPokemonResult<T>
             {
-                Error = $"Unable to parse Showdown Set:\n{string.Join("\n", set.InvalidLines)}",
+                Error = $"Unable to parse Showdown Set:\n{string.Join("\n", actualInvalidLines.Select(l => l.Value))}",
                 ShowdownSet = set
             });
         }

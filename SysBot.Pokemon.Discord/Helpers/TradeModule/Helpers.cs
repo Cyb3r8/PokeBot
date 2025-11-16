@@ -161,7 +161,7 @@ public static class Helpers<T> where T : PKM, new()
         }
 
         // If user doesn't have permission for Trainer Data Override, remove them from content
-        if (!canOverrideTrainerData && ContainsTrainerDataOverride(set))
+        if (!canOverrideTrainerData && ContainsTrainerDataOverride(content))
         {
             content = RemoveTrainerDataOverrides(content);
             // Re-parse the modified content
@@ -504,7 +504,8 @@ public static class Helpers<T> where T : PKM, new()
             if (context.User is SocketGuildUser gUser)
             {
                 var roles = gUser.Roles.Select(z => z.Name);
-                if (!SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles))
+                bool hasAutoOTRole = SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles);
+                if (!hasAutoOTRole)
                 {
                     // User doesn't have AutoOT permission, force ignoreAutoOT to true
                     ignoreAutoOT = true;
@@ -526,13 +527,13 @@ public static class Helpers<T> where T : PKM, new()
                 content.Contains("EVs") || content.Contains("IVs") || content.Contains("Moves"));
     }
 
-    private static bool ContainsTrainerDataOverride(ShowdownSet set)
+    private static bool ContainsTrainerDataOverride(string content)
     {
         // Check if the original content contains trainer data overrides
-        return set.Text.Contains("OT:") || 
-               set.Text.Contains("TID:") || 
-               set.Text.Contains("SID:") || 
-               set.Text.Contains("OTGender:");
+        return content.Contains("OT:") ||
+               content.Contains("TID:") ||
+               content.Contains("SID:") ||
+               content.Contains("OTGender:");
     }
 
     private static string RemoveBatchCommands(string content)

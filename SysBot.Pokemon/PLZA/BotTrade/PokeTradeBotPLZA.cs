@@ -1063,7 +1063,7 @@ public class PokeTradeBotPLZA(PokeTradeHub<PA9> Hub, PokeBotState Config) : Poke
 
                 if (nextToSend.Species != 0)
                 {
-                    if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && cachedTradePartnerInfo != null)
+                    if (Hub.Config.Legality.UseTradePartnerInfo && !poke.IgnoreAutoOT && PokeBot.CanUseAutoOT(poke) && cachedTradePartnerInfo != null)
                     {
                         nextToSend = await ApplyAutoOT(nextToSend, cachedTradePartnerInfo, sav, token);
                         tradesToProcess[nextTradeIndex] = nextToSend; // Update the list

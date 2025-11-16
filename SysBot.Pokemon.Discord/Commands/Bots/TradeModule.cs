@@ -738,32 +738,36 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         if (pk == null)
             return;
 
-        // Check if user has permission to use AutoOT
-        if (!ignoreAutoOT && SysCordSettings.Manager != null)
+        // Check if user has permission to use AutoOT and override trainer data
+        if (SysCordSettings.Manager != null && Context.User is SocketGuildUser gUser)
         {
-            if (Context.User is SocketGuildUser gUser)
-            {
-                var roles = gUser.Roles.Select(z => z.Name);
-                if (!SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles))
-                {
-                    // User doesn't have AutoOT permission, force ignoreAutoOT to true
-                    ignoreAutoOT = true;
+            var roles = gUser.Roles.Select(z => z.Name);
 
-                    // Immediately legalize the Pokemon to remove original trainer data
-                    try
+            // Check AutoOT permission
+            if (!ignoreAutoOT && !SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesAutoOT), roles))
+            {
+                // User doesn't have AutoOT permission, force ignoreAutoOT to true
+                ignoreAutoOT = true;
+            }
+
+            // Check Trainer Data Override permission
+            if (!SysCordSettings.Manager.GetHasRoleAccess(nameof(DiscordManager.RolesTrainerDataOverride), roles))
+            {
+                // User doesn't have permission to use custom trainer data
+                // Legalize the Pokemon to set bot's default OT/TID/SID
+                try
+                {
+                    var legalized = pk.LegalizePokemon();
+                    if (legalized != null && new LegalityAnalysis(legalized).Valid)
                     {
-                        var legalized = pk.LegalizePokemon();
-                        if (legalized != null && new LegalityAnalysis(legalized).Valid)
-                        {
-                            pk = (T)legalized;
-                        }
+                        pk = (T)legalized;
                     }
-                    catch (Exception ex)
-                    {
-                        LogUtil.LogSafe(ex, nameof(TradeModule<T>));
-                        // If legalization fails, continue with original Pokemon
-                        // The bot will handle it during trade processing
-                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUtil.LogSafe(ex, nameof(TradeModule<T>));
+                    // If legalization fails, continue with original Pokemon
+                    // The bot will handle it during trade processing
                 }
             }
         }

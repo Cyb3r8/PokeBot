@@ -686,9 +686,6 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
         {
             try
             {
-                // Detect custom trainer info BEFORE generating the Pokemon
-                var ignoreAutoOT = content.Contains("OT:") || content.Contains("TID:") || content.Contains("SID:");
-
                 var userRoles = Context.User is SocketGuildUser tradeGUser ? tradeGUser.Roles.Select(r => r.Name) : null;
                 var result = await Helpers<T>.ProcessShowdownSetAsync(content, userRoles: userRoles);
 
@@ -701,7 +698,8 @@ public class TradeModule<T> : ModuleBase<SocketCommandContext> where T : PKM, ne
                 var sig = Context.User.GetFavor();
 
                 // Check if user has permission to use AutoOT
-                if (!ignoreAutoOT && SysCordSettings.Manager != null)
+                bool ignoreAutoOT = false;
+                if (SysCordSettings.Manager != null)
                 {
                     if (Context.User is SocketGuildUser gUser)
                     {

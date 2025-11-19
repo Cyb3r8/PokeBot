@@ -1,12 +1,12 @@
+using PKHeX.Core;
+using SysBot.Base;
+using SysBot.Pokemon.Helpers;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using PKHeX.Core;
-using SysBot.Base;
-using SysBot.Pokemon.Helpers;
 using TwitchLib.Client;
 using TwitchLib.Client.Events;
 using TwitchLib.Client.Models;
@@ -394,11 +394,11 @@ public class TwitchBot<T> : IChatBot where T : PKM, new()
         var trainer = new PokeTradeTrainerInfo(name, ulong.Parse(e.WhisperMessage.UserId));
         var notifier = new TwitchTradeNotifier<T>(pk, trainer, code, e.WhisperMessage.Username, client, Settings.Channel, Hub.Config.Twitch);
 
-        // PLZA command-level block: prevent queuing if item is on PLZA blacklist
-        if (NonTradableItemsPLZA.IsPLZAMode(Hub) && NonTradableItemsPLZA.IsBlocked(pk))
+        // Block non-tradable items using PKHeX's ItemRestrictions
+        if (TradeExtensions<T>.IsItemBlocked(pk))
         {
             var itemName = pk.HeldItem > 0 ? PKHeX.Core.GameInfo.GetStrings("en").Item[pk.HeldItem] : "(none)";
-            msg = $"@{name}: Trade blocked — the held item '{itemName}' cannot be traded in PLZA.";
+            msg = $"@{name}: Trade blocked — the held item '{itemName}' cannot be traded.";
             return false;
         }
 

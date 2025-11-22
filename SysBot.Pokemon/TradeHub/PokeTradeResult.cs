@@ -40,8 +40,6 @@ public enum PokeTradeResult
     RecoverReturnOverworld,
 
     RecoverEnterUnionRoom,
-
-    TradeEvolveNotAllowed,
 }
 
 public static class PokeTradeResultExtensions

@@ -18,8 +18,19 @@ public static class DetailsExtractor<T> where T : PKM, new()
     /// Adds additional text to the embed as configured in settings.
     /// </summary>
     /// <param name="embedBuilder">Discord embed builder to modify.</param>
-    public static void AddAdditionalText(EmbedBuilder embedBuilder)
+    /// <param name="channelId">Channel ID where the embed will be sent.</param>
+    public static void AddAdditionalText(EmbedBuilder embedBuilder, ulong channelId = 0)
     {
+        var additionalTextChannels = SysCordSettings.Settings.AdditionalEmbedTextChannels;
+
+        // If no channels are specified, show in all channels (backwards compatibility)
+        // If channels are specified, only show in those channels
+        bool shouldShowText = additionalTextChannels.List.Count == 0 ||
+                              additionalTextChannels.List.Any(entry => entry.ID == channelId);
+
+        if (!shouldShowText)
+            return;
+
         string additionalText = string.Join("\n", SysCordSettings.Settings.AdditionalEmbedText);
         if (!string.IsNullOrEmpty(additionalText))
         {

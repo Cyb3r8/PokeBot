@@ -66,6 +66,9 @@ public class DiscordSettings
     [Category(Operation), Description("Additional text to add to the beginning of the embed description.")]
     public string[] AdditionalEmbedText { get; set; } = [];
 
+    [Category(Channels), Description("Channels where AdditionalEmbedText will be shown. If empty, AdditionalEmbedText will be shown in all channels.")]
+    public RemoteControlAccessList AdditionalEmbedTextChannels { get; set; } = new();
+
     [Category(Users), Description("Disabling this will remove global sudo support.")]
     public bool AllowGlobalSudo { get; set; } = true;
 

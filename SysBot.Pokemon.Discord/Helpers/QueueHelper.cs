@@ -229,7 +229,7 @@ public static class QueueHelper<T> where T : PKM, new()
                     .WithIconUrl(trader.GetAvatarUrl() ?? trader.GetDefaultAvatarUrl())
                     .WithUrl("http://ninetales-paradise.com/"));
 
-            DetailsExtractor<T>.AddAdditionalText(embedBuilder);
+            DetailsExtractor<T>.AddAdditionalText(embedBuilder, context.Channel.Id);
 
             if (!isMysteryEgg && type != PokeRoutineType.Clone && type != PokeRoutineType.Dump && type != PokeRoutineType.FixOT && type != PokeRoutineType.SeedCheck)
             {
@@ -446,7 +446,7 @@ public static class QueueHelper<T> where T : PKM, new()
                             .WithIconUrl(trader.GetAvatarUrl() ?? trader.GetDefaultAvatarUrl())
                             .WithUrl("http://ninetales-paradise.com/"));
 
-                    DetailsExtractor<T>.AddAdditionalText(embedBuilder);
+                    DetailsExtractor<T>.AddAdditionalText(embedBuilder, context.Channel.Id);
                     DetailsExtractor<T>.AddNormalTradeFields(embedBuilder, embedData, trader.Mention, pk);
 
                     // Check for Non-Native and Home Tracker

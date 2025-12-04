@@ -252,7 +252,7 @@ public class PokeTradeBotBS : PokeRoutineExecutor8BS, ICountBot, ITradeBot, IDis
         string otName = tradePartner;
         if (userSetLanguage)
         {
-            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.BDSP, 8, lang: (LanguageID)userLanguage);
+            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(8, GameVersion.BDSP, lang: (LanguageID)userLanguage);
             otName = langTrainerInfo.OT;
             Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
         }

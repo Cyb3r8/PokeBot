@@ -1350,7 +1350,7 @@ public class PokeTradeBotLA(PokeTradeHub<PA8> Hub, PokeBotState Config) : PokeRo
         string otName = tradePartner.TrainerName;
         if (userSetLanguage)
         {
-            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.PLA, 8, lang: (LanguageID)userLanguage);
+            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(8, GameVersion.PLA, lang: (LanguageID)userLanguage);
             otName = langTrainerInfo.OT;
             Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
         }

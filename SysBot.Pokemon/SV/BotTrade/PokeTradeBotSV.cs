@@ -232,7 +232,7 @@ public class PokeTradeBotSV(PokeTradeHub<PK9> Hub, PokeBotState Config) : PokeRo
         string otName = tradePartner.OT;
         if (userSetLanguage)
         {
-            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.SV, 9, lang: (LanguageID)userLanguage);
+            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(9, GameVersion.SV, lang: (LanguageID)userLanguage);
             otName = langTrainerInfo.OT;
             Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
         }

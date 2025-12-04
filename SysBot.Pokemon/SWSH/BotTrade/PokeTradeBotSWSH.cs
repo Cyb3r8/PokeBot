@@ -1666,7 +1666,7 @@ public class PokeTradeBotSWSH(PokeTradeHub<PK8> hub, PokeBotState config) : Poke
         string otName = trainerName;
         if (userSetLanguage)
         {
-            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(GameVersion.SWSH, 8, lang: (LanguageID)userLanguage);
+            var langTrainerInfo = TrainerSettings.GetSavedTrainerData(8, GameVersion.SWSH, lang: (LanguageID)userLanguage);
             otName = langTrainerInfo.OT;
             Log($"User set language to {(LanguageID)userLanguage}. Using language-appropriate OT: {otName}");
         }
